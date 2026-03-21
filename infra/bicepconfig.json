@@ -1,0 +1,9 @@
+{
+  "analyzers": {
+    "core": {
+      "rules": {
+        "use-parent-property": { "level": "error" }
+      }
+    }
+  }
+}
