@@ -8,10 +8,11 @@ const container = () => getDatabase().container(CONTAINERS.favorites);
 export async function getTopFavorites(guildId: string, limit = 10): Promise<Favorite[]> {
   const { resources } = await container()
     .items.query<Favorite>({
-      query: `SELECT TOP ${limit} * FROM c WHERE c.guildId = @guildId ORDER BY c.usageCount DESC`,
+      query: `SELECT * FROM c WHERE c.guildId = @guildId`,
       parameters: [{ name: '@guildId', value: guildId }],
     })
     .fetchAll();
+  return resources.sort((a, b) => b.usageCount - a.usageCount).slice(0, limit);
   return resources;
 }
 

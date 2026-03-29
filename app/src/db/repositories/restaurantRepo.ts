@@ -12,11 +12,11 @@ export async function createRestaurant(restaurant: Restaurant): Promise<Restaura
 export async function getRestaurantsForSession(sessionId: string): Promise<Restaurant[]> {
   const { resources } = await container()
     .items.query<Restaurant>({
-      query: 'SELECT * FROM c WHERE c.sessionId = @sessionId ORDER BY ARRAY_LENGTH(c.votes) DESC',
+      query: 'SELECT * FROM c WHERE c.sessionId = @sessionId',
       parameters: [{ name: '@sessionId', value: sessionId }],
     })
     .fetchAll();
-  return resources;
+  return resources.sort((a, b) => b.votes.length - a.votes.length);
 }
 
 export async function getRestaurantById(id: string, sessionId: string): Promise<Restaurant | null> {
