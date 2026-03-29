@@ -175,7 +175,7 @@ export async function handleEditTimeModal(
     const embed = buildSessionEmbed(updated, participants, restaurants, carpools);
     const rows = buildActionRows(updated);
 
-    if (session.messageId) {
+    if (session.messageId && interaction.channelId) {
       try {
         await interaction.client.rest.patch(
           Routes.channelMessage(interaction.channelId, session.messageId),
