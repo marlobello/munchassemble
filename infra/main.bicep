@@ -93,7 +93,6 @@ module containerApp 'modules/containerApp.bicep' = {
     appInsightsConnectionString: monitoring.outputs.connectionString
     cosmosEndpoint: cosmos.outputs.endpoint
     keyVaultName: keyVaultName
-    acrLoginServer: acr.outputs.loginServer
     discordGuildId: discordGuildId
     discordApplicationId: discordApplicationId
     env: env

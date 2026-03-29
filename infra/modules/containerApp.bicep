@@ -26,9 +26,6 @@ param cosmosEndpoint string
 @description('Key Vault name (used to set KEY_VAULT_NAME env var)')
 param keyVaultName string
 
-@description('Container Registry login server (for ACR pull)')
-param acrLoginServer string
-
 @description('Discord Application ID (not secret — used for logging/reference only; bot obtains its own ID after login)')
 param discordApplicationId string = ''
 
@@ -65,12 +62,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     environmentId: containerAppsEnv.id
     configuration: {
-      registries: [
-        {
-          server: acrLoginServer
-          identity: 'system'
-        }
-      ]
       activeRevisionsMode: 'Single'
     }
     template: {

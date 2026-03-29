@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "5797296570822708559"
+      "templateHash": "23121868397594203"
     }
   },
   "parameters": {
@@ -1073,9 +1073,6 @@
           "keyVaultName": {
             "value": "[variables('keyVaultName')]"
           },
-          "acrLoginServer": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-acr'), '2025-04-01').outputs.loginServer.value]"
-          },
           "discordGuildId": {
             "value": "[parameters('discordGuildId')]"
           },
@@ -1093,7 +1090,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "9740794842879771507"
+              "templateHash": "7606549955345677679"
             }
           },
           "parameters": {
@@ -1143,12 +1140,6 @@
               "type": "string",
               "metadata": {
                 "description": "Key Vault name (used to set KEY_VAULT_NAME env var)"
-              }
-            },
-            "acrLoginServer": {
-              "type": "string",
-              "metadata": {
-                "description": "Container Registry login server (for ACR pull)"
               }
             },
             "discordApplicationId": {
@@ -1207,12 +1198,6 @@
               "properties": {
                 "environmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('envName'))]",
                 "configuration": {
-                  "registries": [
-                    {
-                      "server": "[parameters('acrLoginServer')]",
-                      "identity": "system"
-                    }
-                  ],
                   "activeRevisionsMode": "Single"
                 },
                 "template": {
@@ -1299,7 +1284,6 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'deploy-acr')]",
         "[resourceId('Microsoft.Resources/deployments', 'deploy-cosmos')]",
         "[resourceId('Microsoft.Resources/deployments', 'deploy-monitoring')]"
       ]
