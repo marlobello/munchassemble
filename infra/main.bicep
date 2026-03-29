@@ -21,6 +21,9 @@ param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-hellowo
 @description('Optional Discord Guild ID — restricts command registration to one guild (dev only).')
 param discordGuildId string = ''
 
+@description('Discord Application ID — not secret; used for registration reference.')
+param discordApplicationId string = ''
+
 // ─── Derived names ─────────────────────────────────────────────────────────────
 
 var acrName = 'acr${suffix}${env}'
@@ -92,6 +95,7 @@ module containerApp 'modules/containerApp.bicep' = {
     keyVaultName: keyVaultName
     acrLoginServer: acr.outputs.loginServer
     discordGuildId: discordGuildId
+    discordApplicationId: discordApplicationId
     env: env
   }
 }

@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "12951312272637395081"
+      "templateHash": "18250032048668688026"
     }
   },
   "parameters": {
@@ -42,6 +42,13 @@
       "defaultValue": "",
       "metadata": {
         "description": "Optional Discord Guild ID — restricts command registration to one guild (dev only)."
+      }
+    },
+    "discordApplicationId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Discord Application ID — not secret; used for registration reference."
       }
     }
   },
@@ -1065,6 +1072,9 @@
           "discordGuildId": {
             "value": "[parameters('discordGuildId')]"
           },
+          "discordApplicationId": {
+            "value": "[parameters('discordApplicationId')]"
+          },
           "env": {
             "value": "[parameters('env')]"
           }
@@ -1076,7 +1086,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "18343010222329130066"
+              "templateHash": "9740794842879771507"
             }
           },
           "parameters": {
@@ -1132,6 +1142,13 @@
               "type": "string",
               "metadata": {
                 "description": "Container Registry login server (for ACR pull)"
+              }
+            },
+            "discordApplicationId": {
+              "type": "string",
+              "defaultValue": "",
+              "metadata": {
+                "description": "Discord Application ID (not secret — used for logging/reference only; bot obtains its own ID after login)"
               }
             },
             "discordGuildId": {
@@ -1216,6 +1233,10 @@
                         {
                           "name": "APPLICATIONINSIGHTS_CONNECTION_STRING",
                           "value": "[parameters('appInsightsConnectionString')]"
+                        },
+                        {
+                          "name": "DISCORD_APPLICATION_ID",
+                          "value": "[parameters('discordApplicationId')]"
                         },
                         {
                           "name": "DISCORD_GUILD_ID",

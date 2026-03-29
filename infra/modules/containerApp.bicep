@@ -29,6 +29,9 @@ param keyVaultName string
 @description('Container Registry login server (for ACR pull)')
 param acrLoginServer string
 
+@description('Discord Application ID (not secret — used for logging/reference only; bot obtains its own ID after login)')
+param discordApplicationId string = ''
+
 @description('Discord Guild ID (optional; set to restrict command registration to one guild)')
 param discordGuildId string = ''
 
@@ -84,6 +87,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'KEY_VAULT_NAME', value: keyVaultName }
             { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
+            { name: 'DISCORD_APPLICATION_ID', value: discordApplicationId }
             { name: 'DISCORD_GUILD_ID', value: discordGuildId }
           ]
         }
