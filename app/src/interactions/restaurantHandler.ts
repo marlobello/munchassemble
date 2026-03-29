@@ -223,7 +223,7 @@ async function refreshPanel(
   restaurants: import('../types/index.js').Restaurant[],
 ): Promise<void> {
   try {
-    const channel = interaction.channel;
+    const channel = await interaction.client.channels.fetch(interaction.channelId);
     if (!channel || !channel.isTextBased()) return;
     const panelMsg = await channel.messages.fetch(session.messageId);
     if (!panelMsg) return;
@@ -231,8 +231,8 @@ async function refreshPanel(
     const embed = buildSessionEmbed(session, participants, restaurants, carpools);
     const rows = buildActionRows(session);
     await panelMsg.edit({ embeds: [embed], components: rows });
-  } catch {
-    // Non-critical — panel may already be updated by another interaction
+  } catch (err) {
+    console.error('[panel] Failed to refresh panel after vote:', err);
   }
 }
 
