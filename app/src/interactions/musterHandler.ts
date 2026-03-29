@@ -14,6 +14,7 @@ import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { buildSessionEmbed, buildActionRows, SELECT } from '../ui/panelBuilder.js';
+import { AttendanceStatus } from '../types/index.js';
 import type { Client } from 'discord.js';
 
 /** [📍 Muster Point] button — shows muster point select for the user. */
@@ -22,6 +23,16 @@ export async function handleMusterButton(interaction: ButtonInteraction, client:
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
     await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  // Solo drivers don't need a muster point
+  const p = await getParticipant(session.id, interaction.user.id);
+  if (p?.attendanceStatus === AttendanceStatus.DrivingAlone) {
+    await interaction.reply({
+      content: "🚘 You're driving alone — no muster point needed!",
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 

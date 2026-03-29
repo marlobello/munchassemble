@@ -10,6 +10,7 @@ export enum AttendanceStatus {
   In = 'in',
   Maybe = 'maybe',
   Out = 'out',
+  DrivingAlone = 'driving_alone',
 }
 
 export enum ParticipantRole {

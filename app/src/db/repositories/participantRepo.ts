@@ -1,6 +1,7 @@
 import { ItemDefinition } from '@azure/cosmos';
 import { getDatabase, CONTAINERS } from '../cosmosClient.js';
-import type { Participant, AttendanceStatus } from '../../types/index.js';
+import type { Participant } from '../../types/index.js';
+import { AttendanceStatus } from '../../types/index.js';
 
 const container = () => getDatabase().container(CONTAINERS.participants);
 
@@ -52,7 +53,13 @@ export async function updateAttendanceStatus(
   const existing = await getParticipant(sessionId, userId);
   const now = new Date().toISOString();
   const participant: Participant = existing
-    ? { ...existing, attendanceStatus: status, updatedAt: now }
+    ? {
+        ...existing,
+        attendanceStatus: status,
+        // Driving alone means no muster point needed — clear it
+        musterPoint: status === AttendanceStatus.DrivingAlone ? undefined : existing.musterPoint,
+        updatedAt: now,
+      }
     : {
         id: `${sessionId}::${userId}`,
         sessionId,

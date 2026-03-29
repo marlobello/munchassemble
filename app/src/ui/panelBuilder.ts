@@ -16,6 +16,7 @@ export const BTN = {
   in: (sid: string) => `rsvp:in:${sid}`,
   maybe: (sid: string) => `rsvp:maybe:${sid}`,
   out: (sid: string) => `rsvp:out:${sid}`,
+  drivingAlone: (sid: string) => `rsvp:driving_alone:${sid}`,
   vote: (sid: string) => `restaurant:vote:${sid}`,
   addSpot: (sid: string) => `restaurant:add:${sid}`,
   lockChoice: (sid: string) => `restaurant:lock:${sid}`,
@@ -52,6 +53,7 @@ export function buildSessionEmbed(
   const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
   const maybeList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Maybe);
   const outList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Out);
+  const soloList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.DrivingAlone);
 
   const nameList = (ps: Participant[]) =>
     ps.length ? ps.map((p) => p.displayName).join(', ') : '*None yet*';
@@ -93,6 +95,11 @@ export function buildSessionEmbed(
         inline: true,
       },
       {
+        name: `🚘 Driving Alone (${soloList.length})`,
+        value: soloList.length ? soloList.map((p) => p.displayName).join(', ') : '*None*',
+        inline: true,
+      },
+      {
         name: '⏰ Timing',
         value: `**Lunch:** ${format12h(session.lunchTime)}  |  **Depart:** ${format12h(session.departTime)}`,
         inline: false,
@@ -121,8 +128,10 @@ export function buildSessionEmbed(
     });
   }
 
-  // Muster points for participants who've selected one
-  const withMuster = participants.filter((p) => p.musterPoint);
+  // Muster points — exclude solo drivers (muster is irrelevant for them)
+  const withMuster = participants.filter(
+    (p) => p.musterPoint && p.attendanceStatus !== AttendanceStatus.DrivingAlone,
+  );
   if (withMuster.length > 0) {
     // Group by muster point
     const grouped = withMuster.reduce<Record<string, string[]>>((acc, p) => {
@@ -160,6 +169,10 @@ function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> 
       .setCustomId(BTN.out(sessionId))
       .setLabel('❌ Out')
       .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(BTN.drivingAlone(sessionId))
+      .setLabel('🚘 Driving Alone')
+      .setStyle(ButtonStyle.Secondary),
   );
 }
 
