@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "18250032048668688026"
+      "templateHash": "5797296570822708559"
     }
   },
   "parameters": {
@@ -180,7 +180,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "10281073789079884207"
+              "templateHash": "2642052193286149320"
             }
           },
           "parameters": {
@@ -268,6 +268,13 @@
                 "description": "Resource ID of the Application Insights component"
               },
               "value": "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]"
+            },
+            "workspaceId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the Log Analytics workspace (used by Container Apps environment)"
+              },
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]"
             }
           }
         }
@@ -1055,7 +1062,7 @@
             "value": "[parameters('containerImage')]"
           },
           "workspaceResourceId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-monitoring'), '2025-04-01').outputs.resourceId.value]"
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-monitoring'), '2025-04-01').outputs.workspaceId.value]"
           },
           "appInsightsConnectionString": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-monitoring'), '2025-04-01').outputs.connectionString.value]"

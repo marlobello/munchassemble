@@ -89,7 +89,7 @@ module containerApp 'modules/containerApp.bicep' = {
     envName: containerAppsEnvName
     appName: containerAppName
     containerImage: containerImage
-    workspaceResourceId: monitoring.outputs.resourceId
+    workspaceResourceId: monitoring.outputs.workspaceId
     appInsightsConnectionString: monitoring.outputs.connectionString
     cosmosEndpoint: cosmos.outputs.endpoint
     keyVaultName: keyVaultName

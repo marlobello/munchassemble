@@ -52,3 +52,6 @@ output instrumentationKey string = appInsights.properties.InstrumentationKey
 
 @description('Resource ID of the Application Insights component')
 output resourceId string = appInsights.id
+
+@description('Resource ID of the Log Analytics workspace (used by Container Apps environment)')
+output workspaceId string = workspace.id
