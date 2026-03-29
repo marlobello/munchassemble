@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "23121868397594203"
+      "templateHash": "3004188584827641192"
     }
   },
   "parameters": {
@@ -41,19 +41,11 @@
       "type": "string",
       "defaultValue": "",
       "metadata": {
-        "description": "Optional Discord Guild ID — restricts command registration to one guild (dev only)."
-      }
-    },
-    "discordApplicationId": {
-      "type": "string",
-      "defaultValue": "",
-      "metadata": {
-        "description": "Discord Application ID — not secret; used for registration reference."
+        "description": "Optional Discord Guild ID — restricts command registration to one guild."
       }
     }
   },
   "variables": {
-    "acrName": "[format('acr{0}{1}', parameters('suffix'), parameters('env'))]",
     "cosmosAccountName": "[format('cosmos-{0}-{1}', parameters('suffix'), parameters('env'))]",
     "keyVaultName": "[format('kv-{0}-{1}', parameters('suffix'), parameters('env'))]",
     "workspaceName": "[format('log-{0}-{1}', parameters('suffix'), parameters('env'))]",
@@ -62,94 +54,6 @@
     "containerAppName": "[format('ca-munchassemble-{0}', parameters('env'))]"
   },
   "resources": [
-    {
-      "type": "Microsoft.Resources/deployments",
-      "apiVersion": "2025-04-01",
-      "name": "deploy-acr",
-      "properties": {
-        "expressionEvaluationOptions": {
-          "scope": "inner"
-        },
-        "mode": "Incremental",
-        "parameters": {
-          "location": {
-            "value": "[parameters('location')]"
-          },
-          "acrName": {
-            "value": "[variables('acrName')]"
-          },
-          "env": {
-            "value": "[parameters('env')]"
-          }
-        },
-        "template": {
-          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-          "contentVersion": "1.0.0.0",
-          "metadata": {
-            "_generator": {
-              "name": "bicep",
-              "version": "0.41.2.15936",
-              "templateHash": "9900584768144303009"
-            }
-          },
-          "parameters": {
-            "location": {
-              "type": "string",
-              "metadata": {
-                "description": "Deployment location"
-              }
-            },
-            "acrName": {
-              "type": "string",
-              "metadata": {
-                "description": "Name of the container registry (must be globally unique, lowercase alphanumeric, 5–50 chars)"
-              }
-            },
-            "env": {
-              "type": "string",
-              "defaultValue": "dev",
-              "metadata": {
-                "description": "Environment tag (dev, prod, etc.)"
-              }
-            }
-          },
-          "resources": [
-            {
-              "type": "Microsoft.ContainerRegistry/registries",
-              "apiVersion": "2023-07-01",
-              "name": "[parameters('acrName')]",
-              "location": "[parameters('location')]",
-              "sku": {
-                "name": "Basic"
-              },
-              "properties": {
-                "adminUserEnabled": false
-              },
-              "tags": {
-                "environment": "[parameters('env')]",
-                "project": "munchassemble"
-              }
-            }
-          ],
-          "outputs": {
-            "loginServer": {
-              "type": "string",
-              "metadata": {
-                "description": "Login server URL of the container registry"
-              },
-              "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), '2023-07-01').loginServer]"
-            },
-            "resourceId": {
-              "type": "string",
-              "metadata": {
-                "description": "Resource ID of the container registry"
-              },
-              "value": "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]"
-            }
-          }
-        }
-      }
-    },
     {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -1076,9 +980,6 @@
           "discordGuildId": {
             "value": "[parameters('discordGuildId')]"
           },
-          "discordApplicationId": {
-            "value": "[parameters('discordApplicationId')]"
-          },
           "env": {
             "value": "[parameters('env')]"
           }
@@ -1090,7 +991,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "7606549955345677679"
+              "templateHash": "16985200555308622359"
             }
           },
           "parameters": {
@@ -1115,7 +1016,7 @@
             "containerImage": {
               "type": "string",
               "metadata": {
-                "description": "Container image to deploy (e.g. myregistry.azurecr.io/munchassemble:latest)"
+                "description": "Container image to deploy (e.g. ghcr.io/owner/munchassemble:sha-abc1234)"
               }
             },
             "workspaceResourceId": {
@@ -1142,30 +1043,20 @@
                 "description": "Key Vault name (used to set KEY_VAULT_NAME env var)"
               }
             },
-            "discordApplicationId": {
-              "type": "string",
-              "defaultValue": "",
-              "metadata": {
-                "description": "Discord Application ID (not secret — used for logging/reference only; bot obtains its own ID after login)"
-              }
-            },
             "discordGuildId": {
               "type": "string",
               "defaultValue": "",
               "metadata": {
-                "description": "Discord Guild ID (optional; set to restrict command registration to one guild)"
+                "description": "Discord Guild ID (optional; set to restrict slash command registration to one guild)"
               }
             },
             "env": {
               "type": "string",
-              "defaultValue": "dev",
+              "defaultValue": "prod",
               "metadata": {
                 "description": "Environment tag"
               }
             }
-          },
-          "variables": {
-            "acrPullRoleId": "7f951dda-4ed3-4680-a7ca-43fe172d538d"
           },
           "resources": [
             {
@@ -1198,6 +1089,7 @@
               "properties": {
                 "environmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('envName'))]",
                 "configuration": {
+                  "registries": [],
                   "activeRevisionsMode": "Single"
                 },
                 "template": {
@@ -1227,10 +1119,6 @@
                           "value": "[parameters('appInsightsConnectionString')]"
                         },
                         {
-                          "name": "DISCORD_APPLICATION_ID",
-                          "value": "[parameters('discordApplicationId')]"
-                        },
-                        {
                           "name": "DISCORD_GUILD_ID",
                           "value": "[parameters('discordGuildId')]"
                         }
@@ -1250,19 +1138,6 @@
               "dependsOn": [
                 "[resourceId('Microsoft.App/managedEnvironments', parameters('envName'))]"
               ]
-            },
-            {
-              "type": "Microsoft.Authorization/roleAssignments",
-              "apiVersion": "2022-04-01",
-              "name": "[guid(resourceId('Microsoft.App/containerApps', parameters('appName')), variables('acrPullRoleId'))]",
-              "properties": {
-                "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', variables('acrPullRoleId'))]",
-                "principalId": "[reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2024-03-01', 'full').identity.principalId]",
-                "principalType": "ServicePrincipal"
-              },
-              "dependsOn": [
-                "[resourceId('Microsoft.App/containerApps', parameters('appName'))]"
-              ]
             }
           ],
           "outputs": {
@@ -1272,13 +1147,6 @@
                 "description": "Principal ID of the Container App system-assigned managed identity"
               },
               "value": "[reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2024-03-01', 'full').identity.principalId]"
-            },
-            "fqdn": {
-              "type": "string",
-              "metadata": {
-                "description": "FQDN of the Container App (not used for inbound traffic — bot uses outbound WebSocket only)"
-              },
-              "value": "[if(equals(reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2024-03-01').configuration.ingress, null()), '(no ingress configured)', reference(resourceId('Microsoft.App/containerApps', parameters('appName')), '2024-03-01').configuration.ingress.fqdn)]"
             }
           }
         }
@@ -1415,13 +1283,6 @@
     }
   ],
   "outputs": {
-    "acrLoginServer": {
-      "type": "string",
-      "metadata": {
-        "description": "ACR login server URL"
-      },
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'deploy-acr'), '2025-04-01').outputs.loginServer.value]"
-    },
     "cosmosEndpoint": {
       "type": "string",
       "metadata": {

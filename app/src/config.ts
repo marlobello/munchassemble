@@ -3,7 +3,6 @@ import { DefaultAzureCredential } from '@azure/identity';
 
 interface Config {
   discordBotToken: string;
-  discordApplicationId?: string;
   discordGuildId?: string;
   cosmosEndpoint: string;
   cosmosKey?: string;
@@ -46,9 +45,6 @@ export async function initConfig(): Promise<void> {
 
   _config = {
     discordBotToken: botToken,
-    // Application ID is not secret — injected as a plain env var. Optional because
-    // the bot obtains its own ID from client.user.id after login.
-    discordApplicationId: process.env.DISCORD_APPLICATION_ID,
     discordGuildId: process.env.DISCORD_GUILD_ID,
     cosmosEndpoint,
     cosmosKey: process.env.COSMOS_KEY, // only needed for local dev without Managed Identity

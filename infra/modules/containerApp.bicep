@@ -1,6 +1,7 @@
 // infra/modules/containerApp.bicep
 // Provisions the Container Apps environment + the Munch Assemble bot Container App.
 // Satisfies ADR-0002 (hosting) and NFR §3 (latency), NFR §4 (cost).
+// Image is pulled from public ghcr.io — no registry credentials needed.
 
 @description('Deployment location')
 param location string
@@ -11,7 +12,7 @@ param envName string
 @description('Name of the Container App')
 param appName string
 
-@description('Container image to deploy (e.g. myregistry.azurecr.io/munchassemble:latest)')
+@description('Container image to deploy (e.g. ghcr.io/owner/munchassemble:sha-abc1234)')
 param containerImage string
 
 @description('Log Analytics workspace resource ID (for Container Apps environment logs)')
@@ -26,14 +27,11 @@ param cosmosEndpoint string
 @description('Key Vault name (used to set KEY_VAULT_NAME env var)')
 param keyVaultName string
 
-@description('Discord Application ID (not secret — used for logging/reference only; bot obtains its own ID after login)')
-param discordApplicationId string = ''
-
-@description('Discord Guild ID (optional; set to restrict command registration to one guild)')
+@description('Discord Guild ID (optional; set to restrict slash command registration to one guild)')
 param discordGuildId string = ''
 
 @description('Environment tag')
-param env string = 'dev'
+param env string = 'prod'
 
 resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   name: envName
@@ -62,6 +60,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   properties: {
     environmentId: containerAppsEnv.id
     configuration: {
+      registries: [] // Public ghcr.io image — no registry credentials needed
       activeRevisionsMode: 'Single'
     }
     template: {
@@ -78,7 +77,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'KEY_VAULT_NAME', value: keyVaultName }
             { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-            { name: 'DISCORD_APPLICATION_ID', value: discordApplicationId }
             { name: 'DISCORD_GUILD_ID', value: discordGuildId }
           ]
         }
@@ -95,22 +93,5 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   }
 }
 
-// Grant the Container App's managed identity ACR pull access
-var acrPullRoleId = '7f951dda-4ed3-4680-a7ca-43fe172d538d' // AcrPull
-resource acrPullRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: resourceGroup()
-  name: guid(containerApp.id, acrPullRoleId)
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPullRoleId)
-    principalId: containerApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
 @description('Principal ID of the Container App system-assigned managed identity')
 output principalId string = containerApp.identity.principalId
-
-@description('FQDN of the Container App (not used for inbound traffic — bot uses outbound WebSocket only)')
-output fqdn string = containerApp.properties.configuration.ingress == null
-  ? '(no ingress configured)'
-  : containerApp.properties.configuration.ingress!.fqdn

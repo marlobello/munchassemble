@@ -18,15 +18,11 @@ param suffix string
 @description('Container image to deploy (e.g. myacr.azurecr.io/munchassemble:1.0.0).')
 param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
-@description('Optional Discord Guild ID — restricts command registration to one guild (dev only).')
+@description('Optional Discord Guild ID — restricts command registration to one guild.')
 param discordGuildId string = ''
-
-@description('Discord Application ID — not secret; used for registration reference.')
-param discordApplicationId string = ''
 
 // ─── Derived names ─────────────────────────────────────────────────────────────
 
-var acrName = 'acr${suffix}${env}'
 var cosmosAccountName = 'cosmos-${suffix}-${env}'
 var keyVaultName = 'kv-${suffix}-${env}'
 var workspaceName = 'log-${suffix}-${env}'
@@ -34,18 +30,7 @@ var appInsightsName = 'appi-${suffix}-${env}'
 var containerAppsEnvName = 'cae-${suffix}-${env}'
 var containerAppName = 'ca-munchassemble-${env}'
 
-// ─── Step 1: Container Registry ───────────────────────────────────────────────
-
-module acr 'modules/containerRegistry.bicep' = {
-  name: 'deploy-acr'
-  params: {
-    location: location
-    acrName: acrName
-    env: env
-  }
-}
-
-// ─── Step 2: Application Insights ─────────────────────────────────────────────
+// ─── Step 1: Application Insights ─────────────────────────────────────────────
 
 module monitoring 'modules/appInsights.bicep' = {
   name: 'deploy-monitoring'
@@ -94,7 +79,6 @@ module containerApp 'modules/containerApp.bicep' = {
     cosmosEndpoint: cosmos.outputs.endpoint
     keyVaultName: keyVaultName
     discordGuildId: discordGuildId
-    discordApplicationId: discordApplicationId
     env: env
   }
 }
@@ -118,9 +102,6 @@ module kvRoleAssignment 'modules/kvRoleAssignment.bicep' = {
 }
 
 // ─── Outputs ──────────────────────────────────────────────────────────────────
-
-@description('ACR login server URL')
-output acrLoginServer string = acr.outputs.loginServer
 
 @description('Cosmos DB endpoint')
 output cosmosEndpoint string = cosmos.outputs.endpoint

@@ -7,29 +7,29 @@ on:
       - 'app/**'
       - '.github/workflows/deploy-app.yml'
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target environment (dev or prod)'
-        required: true
-        default: 'dev'
-        type: choice
-        options: [dev, prod]
-      image_tag:
-        description: 'Image tag to deploy (leave blank to use git SHA)'
-        required: false
 
 permissions:
-  id-token: write
   contents: read
+  packages: write   # Push to GitHub Container Registry
+  id-token: write   # Azure OIDC login in deploy job
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/munchassemble-bot
 
 jobs:
-  build-push-deploy:
-    name: Build → Push → Deploy
+  build-and-push:
+    name: Build & Push Image
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'dev' }}
+    outputs:
+      image-tag: sha-${{ steps.sha.outputs.short }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -38,10 +38,43 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - name: Install & test
+      - name: Install, build & test
         working-directory: app
         run: npm ci && npm run build && npm test
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=false
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./app
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    name: Deploy to Container App
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -49,38 +82,34 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Set environment variables
-        run: |
-          ENV="${{ github.event.inputs.environment || 'dev' }}"
-          SUFFIX="munchassmbl"
-          ACR_NAME="acr${SUFFIX}${ENV}"
-          echo "ENV=$ENV" >> $GITHUB_ENV
-          echo "ACR_NAME=$ACR_NAME" >> $GITHUB_ENV
-          echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${{ github.event.inputs.image_tag || github.sha }}" >> $GITHUB_ENV
-
-      - name: Build and push Docker image
-        working-directory: app
-        run: |
-          az acr login --name "$ACR_NAME"
-          IMAGE="${ACR_LOGIN_SERVER}/munchassemble:${IMAGE_TAG}"
-          docker build -t "$IMAGE" .
-          docker push "$IMAGE"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-
-      - name: Update Container App revision
+      - name: Update Container App image
         run: |
           az containerapp update \
-            --name "ca-munchassemble-${ENV}" \
-            --resource-group "rg-munchassemble-${ENV}" \
-            --image "$IMAGE"
+            --name ca-munchassemble-prod \
+            --resource-group rg-munchassemble-prod \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}
 
-      - name: Verify Container App is healthy
+      - name: Wait for revision to become healthy
         run: |
-          sleep 15
-          STATUS=$(az containerapp show \
-            --name "ca-munchassemble-${ENV}" \
-            --resource-group "rg-munchassemble-${ENV}" \
-            --query "properties.runningStatus" -o tsv)
-          echo "Container App status: $STATUS"
-          [ "$STATUS" = "Running" ] || exit 1
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Waiting for revision with image ${IMAGE} to become active..."
+          for i in $(seq 1 20); do
+            STATUS=$(az containerapp revision list \
+              --name ca-munchassemble-prod \
+              --resource-group rg-munchassemble-prod \
+              --query "[?properties.template.containers[0].image=='${IMAGE}'].properties.healthState" \
+              -o tsv 2>/dev/null)
+            echo "Attempt $i: healthState=${STATUS}"
+            if [ "$STATUS" = "Healthy" ]; then
+              echo "Revision is healthy."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "ERROR: Revision did not become healthy within 5 minutes."
+          az containerapp revision list \
+            --name ca-munchassemble-prod \
+            --resource-group rg-munchassemble-prod \
+            --query "[].{name:name, active:properties.active, health:properties.healthState, image:properties.template.containers[0].image}" \
+            -o table
+          exit 1
