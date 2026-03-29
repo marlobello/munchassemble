@@ -4,5 +4,5 @@ using '../main.bicep'
 param location = 'centralus'
 param env = 'prod'
 param suffix = 'munchassmbl'
-param discordGuildId = '' // right-click your server in Discord → Copy Server ID (requires Developer Mode)
+param discordGuildId = '1088522044913754192'
 // containerImage is set at deploy time by deploy-app.yml — leave as default placeholder here
