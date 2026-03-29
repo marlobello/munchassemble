@@ -1,5 +1,5 @@
 // dev environment parameters
-using './main.bicep'
+using '../main.bicep'
 
 param location = 'centralus'
 param env = 'dev'
