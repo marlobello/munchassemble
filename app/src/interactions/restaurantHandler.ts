@@ -71,18 +71,12 @@ export async function handleVoteSelect(
     getRestaurantsForSession(session.id),
   ]);
 
-  const votedFor = restaurants.find((r) => r.id === restaurantId);
-
-  // Update the ephemeral vote message
-  await interaction.update({
-    content: `✅ Vote recorded for **${votedFor?.name ?? 'unknown'}**!`,
-    components: [],
-  });
-
-  // Also refresh the main panel
+  // Dismiss the ephemeral vote picker and refresh the main panel
+  await interaction.deferUpdate();
+  try { await interaction.deleteReply(); } catch { /* ephemeral already gone */ }
   await refreshPanel(interaction, session, participants, restaurants);
 }
-/** [➕ Add Spot] button — shows quick-select favorites + free-text option (BR-020/BR-024). */
+/** [➕ Add Spot] button — opens modal directly for restaurant name (BR-020). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const session = await getActiveSessionForGuild(interaction.guildId!);
@@ -90,31 +84,7 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
     await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
     return;
   }
-
-  const favorites = await getTopFavorites(interaction.guildId!, 10);
-
-  if (favorites.length > 0) {
-    // Show quick-select from favorites + a "Add new..." option
-    const options = favorites.map((f) =>
-      new StringSelectMenuOptionBuilder().setLabel(f.name).setValue(`fav::${f.name}`),
-    );
-    options.push(
-      new StringSelectMenuOptionBuilder()
-        .setLabel('✏️ Type a new restaurant name...')
-        .setValue('__new__'),
-    );
-
-    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(`restaurant:add_select:${session.id}`)
-        .setPlaceholder('Pick a favorite or add new')
-        .addOptions(options),
-    );
-    await interaction.reply({ content: '🍽️ Pick a spot:', components: [row], flags: MessageFlags.Ephemeral });
-  } else {
-    // No favorites yet — go straight to modal
-    await showAddSpotModal(interaction, session.id);
-  }
+  await showAddSpotModal(interaction, session.id);
 }
 
 /** Select menu from the favorites quick-pick (BR-024). */

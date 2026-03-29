@@ -2,6 +2,7 @@ import {
   ActionRowBuilder,
   ButtonInteraction,
   MessageFlags,
+  Routes,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
   StringSelectMenuOptionBuilder,
@@ -71,11 +72,10 @@ export async function handleMusterSelect(
     await upsertParticipant({ ...p, musterPoint, updatedAt: new Date().toISOString() });
   }
 
+  // Dismiss the ephemeral picker and refresh the main panel
+  await interaction.deferUpdate();
+  try { await interaction.deleteReply(); } catch { /* ephemeral already gone */ }
   await refreshPanel(interaction, session, client);
-  await interaction.update({
-    content: `✅ Your muster point is set to **${musterPoint}**.`,
-    components: [],
-  });
 }
 
 async function refreshPanel(
@@ -83,6 +83,7 @@ async function refreshPanel(
   session: import('../types/index.js').LunchSession,
   client: Client,
 ): Promise<void> {
+  if (!session.messageId) return;
   const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
@@ -92,12 +93,12 @@ async function refreshPanel(
   const embed = buildSessionEmbed(session, participants, restaurants, carpools);
   const rows = buildActionRows(session);
 
-  if (session.messageId && interaction.channel) {
-    try {
-      const msg = await interaction.channel.messages.fetch(session.messageId);
-      await msg.edit({ embeds: [embed], components: rows });
-    } catch {
-      // Panel message may have been deleted
-    }
+  try {
+    await client.rest.patch(
+      Routes.channelMessage(interaction.channelId, session.messageId),
+      { body: { embeds: [embed.toJSON()], components: rows.map((r) => r.toJSON()) } },
+    );
+  } catch (err) {
+    console.error('[panel] Failed to refresh panel after muster select:', err);
   }
 }
