@@ -154,106 +154,62 @@ export function buildSessionEmbed(
 
 // ─── Action rows ──────────────────────────────────────────────────────────────
 
-/** Row 1: Attendance buttons — always shown */
+/** Disabled "header" label button — visual section divider. */
+function headerBtn(label: string): ButtonBuilder {
+  return new ButtonBuilder()
+    .setCustomId(`noop:${label}`)
+    .setLabel(label)
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(true);
+}
+
+/** Row 1 — Attendance */
 function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(BTN.in(sessionId))
-      .setLabel("✅ I'm In")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(BTN.maybe(sessionId))
-      .setLabel('🤔 Maybe')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(BTN.out(sessionId))
-      .setLabel('❌ Out')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(BTN.drivingAlone(sessionId))
-      .setLabel('🚘 Driving Alone')
-      .setStyle(ButtonStyle.Secondary),
+    headerBtn('— Attendance —'),
+    new ButtonBuilder().setCustomId(BTN.in(sessionId)).setLabel("✅ I'm In").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(BTN.maybe(sessionId)).setLabel('🤔 Maybe').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(BTN.out(sessionId)).setLabel('❌ Out').setStyle(ButtonStyle.Danger),
   );
 }
 
-/** Row 2: Restaurant buttons — disabled when session is locked */
-function buildRestaurantRow(
-  sessionId: string,
-  locked: boolean,
-): ActionRowBuilder<ButtonBuilder> {
+/** Row 2 — Restaurant */
+function buildRestaurantRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(BTN.vote(sessionId))
-      .setLabel('🍔 Vote')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(locked),
-    new ButtonBuilder()
-      .setCustomId(BTN.addSpot(sessionId))
-      .setLabel('➕ Add Spot')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(locked),
-    new ButtonBuilder()
-      .setCustomId(BTN.lockChoice(sessionId))
-      .setLabel('🔒 Lock Choice')
-      .setStyle(ButtonStyle.Danger)
-      .setDisabled(locked),
+    headerBtn('— Restaurant —'),
+    new ButtonBuilder().setCustomId(BTN.vote(sessionId)).setLabel('🍔 Vote').setStyle(ButtonStyle.Primary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.addSpot(sessionId)).setLabel('➕ Add Spot').setStyle(ButtonStyle.Secondary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.lockChoice(sessionId)).setLabel('🔒 Lock Choice').setStyle(ButtonStyle.Danger).setDisabled(locked),
   );
 }
 
-/** Row 3: Carpool buttons */
-function buildCarpoolRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
+/** Row 3 — Transportation (Driving Alone lives here, not on attendance row) */
+function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(BTN.driving(sessionId))
-      .setLabel("🚗 I'm Driving")
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(locked),
-    new ButtonBuilder()
-      .setCustomId(BTN.needRide(sessionId))
-      .setLabel('🚌 Need Ride')
-      .setStyle(ButtonStyle.Primary)
-      .setDisabled(locked),
-    new ButtonBuilder()
-      .setCustomId(BTN.carpoolSwitch(sessionId))
-      .setLabel('🔄 Switch')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(locked),
-    new ButtonBuilder()
-      .setCustomId(BTN.autoAssign(sessionId))
-      .setLabel('🤖 Auto Assign')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(locked),
+    headerBtn('— Transportation —'),
+    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel("🚗 I'm Driving").setStyle(ButtonStyle.Success).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.needRide(sessionId)).setLabel('🚌 Need Ride').setStyle(ButtonStyle.Primary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.carpoolSwitch(sessionId)).setLabel('🔄 Switch').setStyle(ButtonStyle.Secondary).setDisabled(locked),
   );
 }
 
-/** Row 4: Muster point button (opens select menu via ephemeral) */
-function buildMusterRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
+/** Row 4 — Location */
+function buildLocationRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(BTN.muster(sessionId))
-      .setLabel('📍 Set Muster Point')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(locked),
+    headerBtn('— Location —'),
+    new ButtonBuilder().setCustomId(BTN.muster(sessionId)).setLabel('📍 Set Muster Point').setStyle(ButtonStyle.Secondary).setDisabled(locked),
   );
 }
 
-/** Row 5: Admin controls */
+/** Row 5 — Admin / Misc (Auto Assign moved here from transport row) */
 function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(BTN.finalize(sessionId))
-      .setLabel('🔒 Finalize Plan')
-      .setStyle(ButtonStyle.Danger)
-      .setDisabled(locked),
-    new ButtonBuilder()
-      .setCustomId(BTN.ping(sessionId))
-      .setLabel('🔔 Ping Unanswered')
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(BTN.editTime(sessionId))
-      .setLabel('✏️ Edit Time')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(locked),
+    headerBtn('— Admin —'),
+    new ButtonBuilder().setCustomId(BTN.autoAssign(sessionId)).setLabel('🤖 Auto Assign').setStyle(ButtonStyle.Secondary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.finalize(sessionId)).setLabel('🔒 Finalize Plan').setStyle(ButtonStyle.Danger).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.ping(sessionId)).setLabel('🔔 Ping Unanswered').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(BTN.editTime(sessionId)).setLabel('✏️ Edit Time').setStyle(ButtonStyle.Secondary).setDisabled(locked),
   );
 }
 
@@ -283,8 +239,8 @@ export function buildActionRows(
   return [
     buildAttendanceRow(session.id),
     buildRestaurantRow(session.id, !!session.lockedRestaurantId),
-    buildCarpoolRow(session.id, false),
-    buildMusterRow(session.id, false),
+    buildTransportRow(session.id, false),
+    buildLocationRow(session.id, false),
     buildAdminRow(session.id, false),
   ];
 }

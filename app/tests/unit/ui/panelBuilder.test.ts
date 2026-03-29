@@ -88,7 +88,7 @@ describe('buildSessionEmbed', () => {
 });
 
 describe('buildActionRows', () => {
-  it('returns 5 rows for a planning session (attendance, restaurant, carpool, muster, admin)', () => {
+  it('returns 5 rows for a planning session (attendance, restaurant, transport, location, admin)', () => {
     const rows = buildActionRows(mockSession);
     expect(rows).toHaveLength(5);
   });
@@ -102,32 +102,37 @@ describe('buildActionRows', () => {
   it('generates correct customIds for attendance buttons', () => {
     const rows = buildActionRows(mockSession);
     const buttons = (rows[0].toJSON() as any).components;
-    expect(buttons[0].custom_id).toBe(BTN.in('sess-1'));
-    expect(buttons[1].custom_id).toBe(BTN.maybe('sess-1'));
-    expect(buttons[2].custom_id).toBe(BTN.out('sess-1'));
+    // buttons[0] is the disabled header label
+    expect(buttons[1].custom_id).toBe(BTN.in('sess-1'));
+    expect(buttons[2].custom_id).toBe(BTN.maybe('sess-1'));
+    expect(buttons[3].custom_id).toBe(BTN.out('sess-1'));
   });
 
-  it('generates correct customIds for carpool buttons on row 3', () => {
+  it('generates correct customIds for transport buttons on row 3', () => {
     const rows = buildActionRows(mockSession);
     const buttons = (rows[2].toJSON() as any).components;
-    expect(buttons[0].custom_id).toBe(BTN.driving('sess-1'));
-    expect(buttons[1].custom_id).toBe(BTN.needRide('sess-1'));
-    expect(buttons[2].custom_id).toBe(BTN.carpoolSwitch('sess-1'));
-    expect(buttons[3].custom_id).toBe(BTN.autoAssign('sess-1'));
+    // buttons[0] is the disabled header label
+    expect(buttons[1].custom_id).toBe(BTN.driving('sess-1'));
+    expect(buttons[2].custom_id).toBe(BTN.drivingAlone('sess-1'));
+    expect(buttons[3].custom_id).toBe(BTN.needRide('sess-1'));
+    expect(buttons[4].custom_id).toBe(BTN.carpoolSwitch('sess-1'));
   });
 
   it('generates correct customId for muster button on row 4', () => {
     const rows = buildActionRows(mockSession);
     const buttons = (rows[3].toJSON() as any).components;
-    expect(buttons[0].custom_id).toBe(BTN.muster('sess-1'));
+    // buttons[0] is the disabled header label
+    expect(buttons[1].custom_id).toBe(BTN.muster('sess-1'));
   });
 
   it('generates correct customIds for admin buttons on row 5', () => {
     const rows = buildActionRows(mockSession);
     const buttons = (rows[4].toJSON() as any).components;
-    expect(buttons[0].custom_id).toBe(BTN.finalize('sess-1'));
-    expect(buttons[1].custom_id).toBe(BTN.ping('sess-1'));
-    expect(buttons[2].custom_id).toBe(BTN.editTime('sess-1'));
+    // buttons[0] is the disabled header label; autoAssign moved here from transport
+    expect(buttons[1].custom_id).toBe(BTN.autoAssign('sess-1'));
+    expect(buttons[2].custom_id).toBe(BTN.finalize('sess-1'));
+    expect(buttons[3].custom_id).toBe(BTN.ping('sess-1'));
+    expect(buttons[4].custom_id).toBe(BTN.editTime('sess-1'));
   });
 });
 
