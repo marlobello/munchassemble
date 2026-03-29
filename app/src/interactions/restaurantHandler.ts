@@ -76,7 +76,7 @@ export async function handleVoteSelect(
   try { await interaction.deleteReply(); } catch { /* ephemeral already gone */ }
   await refreshPanel(interaction, session, participants, restaurants);
 }
-/** [➕ Add Spot] button — opens modal directly for restaurant name (BR-020). */
+/** [➕ Add Spot] button — shows favorites not already in session + free-text option (BR-020/BR-024). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const session = await getActiveSessionForGuild(interaction.guildId!);
@@ -84,7 +84,45 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
     await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
     return;
   }
-  await showAddSpotModal(interaction, session.id);
+
+  const [favorites, existing] = await Promise.all([
+    getTopFavorites(interaction.guildId!, 23),
+    getRestaurantsForSession(session.id),
+  ]);
+
+  const existingNames = new Set(existing.map((r) => r.name.toLowerCase()));
+  const newFavorites = favorites.filter((f) => !existingNames.has(f.name.toLowerCase()));
+
+  if (newFavorites.length === 0) {
+    // No favorites to show — go straight to modal
+    await showAddSpotModal(interaction, session.id);
+    return;
+  }
+
+  const options = newFavorites.map((f) =>
+    new StringSelectMenuOptionBuilder().setLabel(f.name).setValue(`fav::${f.name}`),
+  );
+  options.push(
+    new StringSelectMenuOptionBuilder()
+      .setLabel('✏️ Type a new restaurant name...')
+      .setValue('__new__'),
+  );
+
+  const alreadyAdded = existing.length > 0
+    ? `\nAlready on the list: ${existing.map((r) => `**${r.name}**`).join(', ')}`
+    : '';
+
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`restaurant:add_select:${session.id}`)
+      .setPlaceholder('Pick a favourite or add new')
+      .addOptions(options),
+  );
+  await interaction.reply({
+    content: `🍽️ Pick a spot:${alreadyAdded}`,
+    components: [row],
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 /** Select menu from the favorites quick-pick (BR-024). */
@@ -117,7 +155,9 @@ export async function handleAddSpotSelect(
     }
     throw err;
   }
-  await interaction.update({ content: `✅ **${name}** added!`, components: [] });
+  // Dismiss the ephemeral picker and refresh the main panel
+  await interaction.deferUpdate();
+  try { await interaction.deleteReply(); } catch { /* already gone */ }
   await refreshPanelFromInteraction(interaction, session);
 }
 
