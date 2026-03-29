@@ -1,5 +1,5 @@
 import type { ButtonInteraction, GuildMember, ModalSubmitInteraction } from 'discord.js';
-import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, Routes } from 'discord.js';
 import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '../services/sessionService.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
@@ -175,12 +175,14 @@ export async function handleEditTimeModal(
     const embed = buildSessionEmbed(updated, participants, restaurants, carpools);
     const rows = buildActionRows(updated);
 
-    if (session.messageId && interaction.channel) {
+    if (session.messageId) {
       try {
-        const msg = await interaction.channel.messages.fetch(session.messageId);
-        await msg.edit({ embeds: [embed], components: rows });
-      } catch {
-        // Panel message unavailable
+        await interaction.client.rest.patch(
+          Routes.channelMessage(interaction.channelId, session.messageId),
+          { body: { embeds: [embed.toJSON()], components: rows.map((r) => r.toJSON()) } },
+        );
+      } catch (err) {
+        console.error('[panel] Failed to refresh panel after time edit:', err);
       }
     }
 

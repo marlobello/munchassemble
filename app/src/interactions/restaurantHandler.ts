@@ -11,6 +11,7 @@ import {
   MessageFlags,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  Routes,
 } from 'discord.js';
 import { getActiveSessionForGuild, lockRestaurant } from '../services/sessionService.js';
 import {
@@ -240,15 +241,16 @@ async function refreshPanel(
   participants: import('../types/index.js').Participant[],
   restaurants: import('../types/index.js').Restaurant[],
 ): Promise<void> {
+  if (!session.messageId) return;
   try {
-    const channel = await interaction.client.channels.fetch(interaction.channelId);
-    if (!channel || !channel.isTextBased()) return;
-    const panelMsg = await channel.messages.fetch(session.messageId);
-    if (!panelMsg) return;
     const carpools = await getCarpoolsForSession(session.id);
     const embed = buildSessionEmbed(session, participants, restaurants, carpools);
     const rows = buildActionRows(session);
-    await panelMsg.edit({ embeds: [embed], components: rows });
+    // Use REST PATCH directly — avoids needing ReadMessageHistory to fetch first
+    await interaction.client.rest.patch(
+      Routes.channelMessage(interaction.channelId, session.messageId),
+      { body: { embeds: [embed.toJSON()], components: rows.map((r) => r.toJSON()) } },
+    );
   } catch (err) {
     console.error('[panel] Failed to refresh panel after vote:', err);
   }
