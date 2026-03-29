@@ -3,7 +3,7 @@ import { DefaultAzureCredential } from '@azure/identity';
 
 interface Config {
   discordBotToken: string;
-  discordGuildId?: string;
+  discordGuildIds: string[];
   cosmosEndpoint: string;
   cosmosKey?: string;
   cosmosDatabase: string;
@@ -45,7 +45,10 @@ export async function initConfig(): Promise<void> {
 
   _config = {
     discordBotToken: botToken,
-    discordGuildId: process.env.DISCORD_GUILD_ID,
+    discordGuildIds: (process.env.DISCORD_GUILD_ID ?? '')
+      .split(',')
+      .map(id => id.trim())
+      .filter(id => id.length > 0),
     cosmosEndpoint,
     cosmosKey: process.env.COSMOS_KEY, // only needed for local dev without Managed Identity
     cosmosDatabase: process.env.COSMOS_DATABASE ?? 'munchassemble',

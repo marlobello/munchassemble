@@ -97,8 +97,10 @@ async function main(): Promise<void> {
     }
 
     // Register commands
-    if (config.discordGuildId) {
-      await registerCommands(c.user.id, config.discordGuildId, config.discordBotToken);
+    if (config.discordGuildIds.length > 0) {
+      for (const guildId of config.discordGuildIds) {
+        await registerCommands(c.user.id, guildId, config.discordBotToken);
+      }
     } else {
       for (const guild of c.guilds.cache.values()) {
         await registerCommands(c.user.id, guild.id, config.discordBotToken);
