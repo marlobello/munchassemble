@@ -2,7 +2,7 @@
 
 ## 1. Security
 
-- **AuthN/AuthZ:** All incoming Discord slash command requests MUST be verified using Discord's Ed25519 request signature (the `X-Signature-Ed25519` / `X-Signature-Timestamp` headers). Unsigned or invalid requests are rejected with HTTP 401. Azure resources communicate via Azure Managed Identities — no shared keys between services.
+- **AuthN/AuthZ:** The bot uses a **Gateway WebSocket connection** (discord.js) — there is no public HTTP endpoint for Discord to call, so Ed25519 HTTP signature verification is not applicable (see ADR-0005). Discord authenticates the bot via the bot token stored in Azure Key Vault (see Secrets management below). Azure resources communicate via Azure Managed Identities — no shared keys between services.
 - **Secrets management:** Discord public key, bot token, and any third-party credentials are stored in Azure Key Vault. The Container App accesses them at runtime via Managed Identity references; secrets are never committed to source control or baked into container images.
 - **Encryption requirements:** All traffic in transit uses TLS 1.2+. Data at rest in Cosmos DB is encrypted by default (Azure-managed keys). No additional customer-managed key (CMK) requirement at this time.
 - **Logging / audit:** Structured logs (JSON) emitted to stdout → forwarded to Application Insights. Logs must not contain Discord user tokens, message content, or PII beyond Discord user IDs necessary for feature operation.

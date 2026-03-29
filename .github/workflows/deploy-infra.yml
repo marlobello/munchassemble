@@ -1,0 +1,74 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (dev or prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+env:
+  AZURE_RESOURCE_GROUP: rg-munchassemble-${{ github.event.inputs.environment || 'dev' }}
+
+permissions:
+  id-token: write  # Required for OIDC / federated credential login
+  contents: read
+
+jobs:
+  bicep-what-if:
+    name: What-If (PR preview)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Bicep What-If
+        run: |
+          az deployment group what-if \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/env/dev.bicepparam
+
+  deploy:
+    name: Deploy Bicep
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Bicep
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/env/${ENV}.bicepparam \
+            --name "deploy-$(date +%Y%m%d-%H%M%S)"

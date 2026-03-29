@@ -1,0 +1,86 @@
+name: Deploy App
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/deploy-app.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (dev or prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+      image_tag:
+        description: 'Image tag to deploy (leave blank to use git SHA)'
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-push-deploy:
+    name: Build → Push → Deploy
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install & test
+        working-directory: app
+        run: npm ci && npm run build && npm test
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set environment variables
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          SUFFIX="munchassmbl"
+          ACR_NAME="acr${SUFFIX}${ENV}"
+          echo "ENV=$ENV" >> $GITHUB_ENV
+          echo "ACR_NAME=$ACR_NAME" >> $GITHUB_ENV
+          echo "ACR_LOGIN_SERVER=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ github.event.inputs.image_tag || github.sha }}" >> $GITHUB_ENV
+
+      - name: Build and push Docker image
+        working-directory: app
+        run: |
+          az acr login --name "$ACR_NAME"
+          IMAGE="${ACR_LOGIN_SERVER}/munchassemble:${IMAGE_TAG}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+      - name: Update Container App revision
+        run: |
+          az containerapp update \
+            --name "ca-munchassemble-${ENV}" \
+            --resource-group "rg-munchassemble-${ENV}" \
+            --image "$IMAGE"
+
+      - name: Verify Container App is healthy
+        run: |
+          sleep 15
+          STATUS=$(az containerapp show \
+            --name "ca-munchassemble-${ENV}" \
+            --resource-group "rg-munchassemble-${ENV}" \
+            --query "properties.runningStatus" -o tsv)
+          echo "Container App status: $STATUS"
+          [ "$STATUS" = "Running" ] || exit 1
