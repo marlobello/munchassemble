@@ -92,6 +92,24 @@ export async function handleCreateSessionModal(
   const initialRestaurant = interaction.fields.getTextInputValue('initialRestaurant').trim();
   const notes = interaction.fields.getTextInputValue('notes').trim();
 
+  // Validate date format and ensure it is not in the past
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(date)) {
+    await interaction.reply({
+      content: '❌ Invalid date format. Use YYYY-MM-DD (e.g. 2026-04-01).',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  const today = new Date().toISOString().split('T')[0];
+  if (date < today) {
+    await interaction.reply({
+      content: `❌ You can't schedule a session in the past. Today is **${today}**.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   // Validate time formats
   const timeRegex = /^\d{1,2}:\d{2}$/;
   if (!timeRegex.test(lunchTime) || !timeRegex.test(departTime)) {
