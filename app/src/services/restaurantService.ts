@@ -14,11 +14,20 @@ export async function addRestaurant(
   name: string,
   addedBy: string,
 ): Promise<Restaurant> {
+  const trimmed = name.trim();
+
+  // Prevent duplicate names (case-insensitive) within the same session
+  const existing = await getRestaurantsForSession(sessionId);
+  const duplicate = existing.find(
+    (r) => r.name.toLowerCase() === trimmed.toLowerCase(),
+  );
+  if (duplicate) throw new Error(`DUPLICATE:${trimmed}`);
+
   const now = new Date().toISOString();
   const restaurant: Restaurant = {
     id: `${sessionId}::${randomUUID()}`,
     sessionId,
-    name: name.trim(),
+    name: trimmed,
     addedBy,
     votes: [],
     createdAt: now,

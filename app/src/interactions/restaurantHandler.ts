@@ -136,7 +136,16 @@ export async function handleAddSpotSelect(
     return;
   }
 
-  await addRestaurant(session.id, session.guildId, name, interaction.user.id);
+  try {
+    await addRestaurant(session.id, session.guildId, name, interaction.user.id);
+  } catch (err: unknown) {
+    const msg = (err as Error).message ?? '';
+    if (msg.startsWith('DUPLICATE:')) {
+      await interaction.update({ content: `⚠️ **${name}** is already on the list!`, components: [] });
+      return;
+    }
+    throw err;
+  }
   await interaction.update({ content: `✅ **${name}** added!`, components: [] });
   await refreshPanelFromInteraction(interaction, session);
 }
@@ -170,7 +179,16 @@ export async function handleAddSpotModal(interaction: ModalSubmitInteraction): P
     return;
   }
 
-  await addRestaurant(session.id, session.guildId, name, interaction.user.id);
+  try {
+    await addRestaurant(session.id, session.guildId, name, interaction.user.id);
+  } catch (err: unknown) {
+    const msg = (err as Error).message ?? '';
+    if (msg.startsWith('DUPLICATE:')) {
+      await interaction.reply({ content: `⚠️ **${name}** is already on the list!`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    throw err;
+  }
   await interaction.reply({ content: `✅ **${name}** added to the vote!`, flags: MessageFlags.Ephemeral });
   await refreshPanelFromInteraction(interaction, session);
 }
