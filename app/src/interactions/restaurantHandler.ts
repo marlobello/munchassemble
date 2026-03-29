@@ -124,8 +124,7 @@ export async function handleAddSpotSelect(
   const value = interaction.values[0];
 
   if (value === '__new__') {
-    // User wants to type a new name — show the modal
-    await interaction.update({ content: 'Opening form...', components: [] });
+    // Modal must be the first response — call directly with no prior update
     await showAddSpotModal(interaction, sessionId);
     return;
   }
