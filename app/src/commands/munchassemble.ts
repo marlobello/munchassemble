@@ -6,11 +6,14 @@ import {
   TextInputStyle,
   ActionRowBuilder,
   MessageFlags,
+  Client,
 } from 'discord.js';
 import { startSession, getActiveSessionForGuild, attachMessageId } from '../services/sessionService.js';
 import { addRestaurant } from '../services/restaurantService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
+import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildSessionEmbed, buildActionRows } from '../ui/panelBuilder.js';
+import { scheduleReminders } from '../utils/scheduler.js';
 
 export const data = new SlashCommandBuilder()
   .setName('munchassemble')
@@ -81,6 +84,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 /** Handle the modal submission from /munchassemble. */
 export async function handleCreateSessionModal(
   interaction: import('discord.js').ModalSubmitInteraction,
+  client: Client,
 ): Promise<void> {
   const date = interaction.fields.getTextInputValue('date').trim();
   const lunchTime = interaction.fields.getTextInputValue('lunchTime').trim();
@@ -117,13 +121,17 @@ export async function handleCreateSessionModal(
       : [];
 
     const participants = await getParticipantsForSession(session.id);
-    const embed = buildSessionEmbed(session, participants, restaurants);
+    const carpools = await getCarpoolsForSession(session.id);
+    const embed = buildSessionEmbed(session, participants, restaurants, carpools);
     const rows = buildActionRows(session);
 
     const message = await interaction.editReply({ embeds: [embed], components: rows });
 
     // Store the message ID so handlers can edit the panel later
-    await attachMessageId(session, message.id);
+    const attached = await attachMessageId(session, message.id);
+
+    // Schedule T-15 and T-5 reminders (Phase 3)
+    scheduleReminders(attached, client);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     await interaction.editReply({ content: `❌ ${msg}` });

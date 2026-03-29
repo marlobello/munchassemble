@@ -6,11 +6,11 @@ import {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
-import type { LunchSession, Participant, Restaurant } from '../types/index.js';
-import { AttendanceStatus, SessionStatus } from '../types/index.js';
+import type { LunchSession, Participant, Restaurant, Carpool } from '../types/index.js';
+import { AttendanceStatus, SessionStatus, ParticipantRole } from '../types/index.js';
 
 // ─── Custom ID constants ──────────────────────────────────────────────────────
-// Format: action:sessionId (sessionId is embedded so handlers can look it up)
+// Format: namespace:action:sessionId
 
 export const BTN = {
   in: (sid: string) => `rsvp:in:${sid}`,
@@ -19,12 +19,20 @@ export const BTN = {
   vote: (sid: string) => `restaurant:vote:${sid}`,
   addSpot: (sid: string) => `restaurant:add:${sid}`,
   lockChoice: (sid: string) => `restaurant:lock:${sid}`,
+  driving: (sid: string) => `carpool:driving:${sid}`,
+  needRide: (sid: string) => `carpool:need_ride:${sid}`,
+  carpoolSwitch: (sid: string) => `carpool:switch:${sid}`,
+  autoAssign: (sid: string) => `carpool:auto_assign:${sid}`,
+  muster: (sid: string) => `muster:pick:${sid}`,
+  editTime: (sid: string) => `admin:edit_time:${sid}`,
   finalize: (sid: string) => `admin:finalize:${sid}`,
   ping: (sid: string) => `admin:ping:${sid}`,
 } as const;
 
 export const SELECT = {
   vote: (sid: string) => `select:vote:${sid}`,
+  muster: (sid: string) => `muster:select:${sid}`,
+  carpoolNeedRide: (sid: string) => `carpool:need_ride_select:${sid}`,
 } as const;
 
 // ─── Embed builder ────────────────────────────────────────────────────────────
@@ -33,6 +41,7 @@ export function buildSessionEmbed(
   session: LunchSession,
   participants: Participant[],
   restaurants: Restaurant[],
+  carpools: Carpool[] = [],
 ): EmbedBuilder {
   const isLocked = session.status === SessionStatus.Locked;
   const title = isLocked ? '🔒 FINALIZED – MUNCH ASSEMBLE' : '🍔 MUNCH ASSEMBLE';
@@ -94,6 +103,39 @@ export function buildSessionEmbed(
     embed.addFields({ name: '📝 Notes', value: session.notes, inline: false });
   }
 
+  // Carpool section (Phase 2)
+  if (carpools.length > 0) {
+    const carpoolLines = carpools.map((c) => {
+      const driverParticipant = participants.find((p) => p.userId === c.driverId);
+      const driverName = driverParticipant?.displayName ?? `<@${c.driverId}>`;
+      const filled = c.riders.length;
+      const riderNames = c.riders
+        .map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`)
+        .join(', ');
+      return `🚗 **${driverName}** (${filled}/${c.seats} seats) @ ${c.musterPoint}${filled > 0 ? ` — ${riderNames}` : ''}`;
+    });
+    embed.addFields({
+      name: '🚗 Carpools',
+      value: carpoolLines.join('\n'),
+      inline: false,
+    });
+  }
+
+  // Muster points for participants who've selected one
+  const withMuster = participants.filter((p) => p.musterPoint);
+  if (withMuster.length > 0) {
+    // Group by muster point
+    const grouped = withMuster.reduce<Record<string, string[]>>((acc, p) => {
+      const key = p.musterPoint!;
+      (acc[key] ??= []).push(p.displayName);
+      return acc;
+    }, {});
+    const musterLines = Object.entries(grouped)
+      .map(([point, names]) => `📍 **${point}:** ${names.join(', ')}`)
+      .join('\n');
+    embed.addFields({ name: '📍 Muster Points', value: musterLines, inline: false });
+  }
+
   embed.setFooter({
     text: isLocked ? '🟢 Status: Finalized' : '🟡 Status: Planning',
   });
@@ -145,7 +187,44 @@ function buildRestaurantRow(
   );
 }
 
-/** Row 3: Admin controls */
+/** Row 3: Carpool buttons */
+function buildCarpoolRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(BTN.driving(sessionId))
+      .setLabel("🚗 I'm Driving")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(locked),
+    new ButtonBuilder()
+      .setCustomId(BTN.needRide(sessionId))
+      .setLabel('🚌 Need Ride')
+      .setStyle(ButtonStyle.Primary)
+      .setDisabled(locked),
+    new ButtonBuilder()
+      .setCustomId(BTN.carpoolSwitch(sessionId))
+      .setLabel('🔄 Switch')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(locked),
+    new ButtonBuilder()
+      .setCustomId(BTN.autoAssign(sessionId))
+      .setLabel('🤖 Auto Assign')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(locked),
+  );
+}
+
+/** Row 4: Muster point button (opens select menu via ephemeral) */
+function buildMusterRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(BTN.muster(sessionId))
+      .setLabel('📍 Set Muster Point')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(locked),
+  );
+}
+
+/** Row 5: Admin controls */
 function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -157,6 +236,11 @@ function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<But
       .setCustomId(BTN.ping(sessionId))
       .setLabel('🔔 Ping Unanswered')
       .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(BTN.editTime(sessionId))
+      .setLabel('✏️ Edit Time')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(locked),
   );
 }
 
@@ -174,7 +258,7 @@ function buildLockedRows(_sessionId: string): ActionRowBuilder<ButtonBuilder>[] 
 }
 
 /**
- * Build all action rows for the session panel.
+ * Build all action rows for the session panel (max 5 — Discord limit).
  * Switches to minimal rows when session is finalized (BR-004).
  */
 export function buildActionRows(
@@ -186,7 +270,9 @@ export function buildActionRows(
   return [
     buildAttendanceRow(session.id),
     buildRestaurantRow(session.id, !!session.lockedRestaurantId),
-    buildAdminRow(session.id, locked),
+    buildCarpoolRow(session.id, false),
+    buildMusterRow(session.id, false),
+    buildAdminRow(session.id, false),
   ];
 }
 

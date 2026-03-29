@@ -11,8 +11,11 @@ import {
   ChatInputCommandInteraction,
 } from 'discord.js';
 import { initConfig, getConfig } from './config.js';
-import { expireOldSessions } from './services/sessionService.js';
+import { expireOldSessions, getActiveSessionForGuild } from './services/sessionService.js';
 import { execute as executeMunchAssemble, handleCreateSessionModal } from './commands/munchassemble.js';
+import { execute as executeMunchAssembleConfig } from './commands/munchassembleConfig.js';
+import { data as munchAssembleCommand } from './commands/munchassemble.js';
+import { data as munchAssembleConfigCommand } from './commands/munchassembleConfig.js';
 import { handleAttendanceButton } from './interactions/attendanceHandler.js';
 import {
   handleVoteButton,
@@ -22,8 +25,23 @@ import {
   handleAddSpotModal,
   handleLockChoiceButton,
 } from './interactions/restaurantHandler.js';
-import { handleFinalizeButton, handlePingButton } from './interactions/adminHandler.js';
-import { data as munchAssembleCommand } from './commands/munchassemble.js';
+import {
+  handleFinalizeButton,
+  handlePingButton,
+  handleEditTimeButton,
+  handleEditTimeModal,
+} from './interactions/adminHandler.js';
+import {
+  handleDrivingButton,
+  handleDrivingModal,
+  handleNeedRideButton,
+  handleNeedRideSelect,
+  handleCarpoolSwitchButton,
+  handleAutoAssignButton,
+} from './interactions/carpoolHandler.js';
+import { handleMusterButton, handleMusterSelect } from './interactions/musterHandler.js';
+import { scheduleReminders } from './utils/scheduler.js';
+import { seedDefaultMusterPoints } from './services/musterService.js';
 
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
@@ -34,7 +52,7 @@ async function registerCommands(appId: string, guildId: string, token: string): 
   const rest = new REST().setToken(token);
   try {
     await rest.put(Routes.applicationGuildCommands(appId, guildId), {
-      body: [munchAssembleCommand.toJSON()],
+      body: [munchAssembleCommand.toJSON(), munchAssembleConfigCommand.toJSON()],
     });
     console.log(`[bot] Commands registered for guild ${guildId}`);
   } catch (err) {
@@ -54,7 +72,7 @@ async function main(): Promise<void> {
   });
 
   client.once(Events.ClientReady, async (c) => {
-    console.log(`[bot] Logged in as ${c.user.tag}`);
+    console.log(`🤖 Munch Assemble is online as ${c.user.tag}`);
 
     // Expire stale sessions on startup (BR-005)
     try {
@@ -62,6 +80,20 @@ async function main(): Promise<void> {
       console.log('[bot] Stale sessions expired');
     } catch (err) {
       console.error('[bot] Failed to expire stale sessions:', err);
+    }
+
+    // Reschedule reminders for any active sessions (P3 — restart resilience)
+    for (const guild of c.guilds.cache.values()) {
+      try {
+        await seedDefaultMusterPoints(guild.id);
+        const session = await getActiveSessionForGuild(guild.id);
+        if (session) {
+          scheduleReminders(session, client);
+          console.log(`[bot] Rescheduled reminders for active session ${session.id} in guild ${guild.id}`);
+        }
+      } catch (err) {
+        console.error(`[bot] Error during startup for guild ${guild.id}:`, err);
+      }
     }
 
     // Register commands
@@ -75,13 +107,14 @@ async function main(): Promise<void> {
   });
 
   client.on(Events.GuildCreate, async (guild) => {
-    const config = getConfig();
-    await registerCommands(client.user!.id, guild.id, config.discordBotToken);
+    const cfg = getConfig();
+    await seedDefaultMusterPoints(guild.id);
+    await registerCommands(client.user!.id, guild.id, cfg.discordBotToken);
   });
 
   client.on(Events.InteractionCreate, async (interaction: Interaction) => {
     try {
-      await routeInteraction(interaction);
+      await routeInteraction(interaction, client);
     } catch (err) {
       console.error('[bot] Error handling interaction:', err);
     }
@@ -90,12 +123,14 @@ async function main(): Promise<void> {
   await client.login(config.discordBotToken);
 }
 
-async function routeInteraction(interaction: Interaction): Promise<void> {
+async function routeInteraction(interaction: Interaction, client: Client): Promise<void> {
   // ── Slash commands ──────────────────────────────────────────────────────────
   if (interaction.isChatInputCommand()) {
     const cmd = interaction as ChatInputCommandInteraction;
     if (cmd.commandName === 'munchassemble') {
       await executeMunchAssemble(cmd);
+    } else if (cmd.commandName === 'munchassemble-config') {
+      await executeMunchAssembleConfig(cmd);
     }
     return;
   }
@@ -104,9 +139,13 @@ async function routeInteraction(interaction: Interaction): Promise<void> {
   if (interaction.isModalSubmit()) {
     const modal = interaction as ModalSubmitInteraction;
     if (modal.customId === 'modal:create_session') {
-      await handleCreateSessionModal(modal);
+      await handleCreateSessionModal(modal, client);
     } else if (modal.customId.startsWith('modal:add_spot:')) {
       await handleAddSpotModal(modal);
+    } else if (modal.customId.startsWith('modal:driving:')) {
+      await handleDrivingModal(modal, client);
+    } else if (modal.customId.startsWith('modal:edit_time:')) {
+      await handleEditTimeModal(modal, client);
     }
     return;
   }
@@ -122,9 +161,17 @@ async function routeInteraction(interaction: Interaction): Promise<void> {
       if (action === 'vote') await handleVoteButton(btn);
       else if (action === 'add') await handleAddSpotButton(btn);
       else if (action === 'lock') await handleLockChoiceButton(btn);
+    } else if (namespace === 'carpool') {
+      if (action === 'driving') await handleDrivingButton(btn);
+      else if (action === 'need_ride') await handleNeedRideButton(btn, client);
+      else if (action === 'switch') await handleCarpoolSwitchButton(btn, client);
+      else if (action === 'auto_assign') await handleAutoAssignButton(btn, client);
+    } else if (namespace === 'muster') {
+      await handleMusterButton(btn, client);
     } else if (namespace === 'admin') {
       if (action === 'finalize') await handleFinalizeButton(btn);
       else if (action === 'ping') await handlePingButton(btn);
+      else if (action === 'edit_time') await handleEditTimeButton(btn);
     }
     return;
   }
@@ -138,6 +185,10 @@ async function routeInteraction(interaction: Interaction): Promise<void> {
       await handleVoteSelect(select);
     } else if (namespace === 'restaurant' && action === 'add_select') {
       await handleAddSpotSelect(select);
+    } else if (namespace === 'carpool' && action === 'need_ride_select') {
+      await handleNeedRideSelect(select, client);
+    } else if (namespace === 'muster' && action === 'select') {
+      await handleMusterSelect(select, client);
     }
     return;
   }

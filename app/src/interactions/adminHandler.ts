@@ -1,8 +1,9 @@
-import type { ButtonInteraction, GuildMember } from 'discord.js';
-import { MessageFlags } from 'discord.js';
-import { getActiveSessionForGuild, finalizeSession } from '../services/sessionService.js';
+import type { ButtonInteraction, GuildMember, ModalSubmitInteraction } from 'discord.js';
+import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
+import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '../services/sessionService.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
+import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildSessionEmbed, buildActionRows } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 
@@ -24,12 +25,13 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
   }
 
   const updatedSession = await finalizeSession(session);
-  const [participants, restaurants] = await Promise.all([
+  const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
   ]);
 
-  const embed = buildSessionEmbed(updatedSession, participants, restaurants);
+  const embed = buildSessionEmbed(updatedSession, participants, restaurants, carpools);
   const rows = buildActionRows(updatedSession);
 
   await interaction.update({ embeds: [embed], components: rows });
@@ -86,4 +88,108 @@ export async function handlePingButton(interaction: ButtonInteraction): Promise<
     content: `👀 **Still need responses from:** ${mentions}`,
     allowedMentions: { users: unanswered },
   });
+}
+
+/** [✏️ Edit Time] button — opens modal to update lunch/depart times. Creator/admin only. */
+export async function handleEditTimeButton(interaction: ButtonInteraction): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
+    await interaction.reply({
+      content: '🚫 Only the session creator or a server admin can edit the time.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId(`modal:edit_time:${sessionId}`)
+    .setTitle('✏️ Edit Session Times');
+
+  const lunchInput = new TextInputBuilder()
+    .setCustomId('lunchTime')
+    .setLabel('Lunch time (HH:MM, 24h)')
+    .setStyle(TextInputStyle.Short)
+    .setValue(session.lunchTime)
+    .setRequired(true);
+
+  const departInput = new TextInputBuilder()
+    .setCustomId('departTime')
+    .setLabel('Departure time (HH:MM, 24h)')
+    .setStyle(TextInputStyle.Short)
+    .setValue(session.departTime)
+    .setRequired(true);
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(lunchInput),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(departInput),
+  );
+
+  await interaction.showModal(modal);
+}
+
+/** Handle the Edit Time modal submission. */
+export async function handleEditTimeModal(
+  interaction: ModalSubmitInteraction,
+  client: import('discord.js').Client,
+): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const lunchTime = interaction.fields.getTextInputValue('lunchTime').trim();
+  const departTime = interaction.fields.getTextInputValue('departTime').trim();
+
+  const timeRegex = /^\d{1,2}:\d{2}$/;
+  if (!timeRegex.test(lunchTime) || !timeRegex.test(departTime)) {
+    await interaction.reply({
+      content: '❌ Invalid time format. Use HH:MM (e.g. 11:15).',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  try {
+    const updated = await updateSessionTimes(session, lunchTime, departTime);
+
+    // Reschedule reminders with the new time
+    const { scheduleReminders } = await import('../utils/scheduler.js');
+    scheduleReminders(updated, client);
+
+    const [participants, restaurants, carpools] = await Promise.all([
+      getParticipantsForSession(session.id),
+      getRestaurantsForSession(session.id),
+      getCarpoolsForSession(session.id),
+    ]);
+
+    const embed = buildSessionEmbed(updated, participants, restaurants, carpools);
+    const rows = buildActionRows(updated);
+
+    if (session.messageId && interaction.channel) {
+      try {
+        const msg = await interaction.channel.messages.fetch(session.messageId);
+        await msg.edit({ embeds: [embed], components: rows });
+      } catch {
+        // Panel message unavailable
+      }
+    }
+
+    await interaction.editReply({
+      content: `✅ Times updated — Lunch: **${lunchTime}**, Depart: **${departTime}**.`,
+    });
+  } catch (err) {
+    await interaction.editReply({
+      content: `❌ ${err instanceof Error ? err.message : 'Failed to update times.'}`,
+    });
+  }
 }

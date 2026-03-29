@@ -3,6 +3,7 @@ import { MessageFlags } from 'discord.js';
 import { AttendanceStatus } from '../types/index.js';
 import { rsvp, getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
+import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
 import { buildSessionEmbed, buildActionRows } from '../ui/panelBuilder.js';
 
@@ -32,12 +33,13 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
     status,
   );
 
-  const [participants, restaurants] = await Promise.all([
+  const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
   ]);
 
-  const embed = buildSessionEmbed(session, participants, restaurants);
+  const embed = buildSessionEmbed(session, participants, restaurants, carpools);
   const rows = buildActionRows(session);
 
   // Update the panel in-place

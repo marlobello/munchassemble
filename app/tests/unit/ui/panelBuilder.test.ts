@@ -88,9 +88,9 @@ describe('buildSessionEmbed', () => {
 });
 
 describe('buildActionRows', () => {
-  it('returns 3 rows for a planning session', () => {
+  it('returns 5 rows for a planning session (attendance, restaurant, carpool, muster, admin)', () => {
     const rows = buildActionRows(mockSession);
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(5);
   });
 
   it('returns 1 row (disabled) for a locked session', () => {
@@ -105,6 +105,29 @@ describe('buildActionRows', () => {
     expect(buttons[0].custom_id).toBe(BTN.in('sess-1'));
     expect(buttons[1].custom_id).toBe(BTN.maybe('sess-1'));
     expect(buttons[2].custom_id).toBe(BTN.out('sess-1'));
+  });
+
+  it('generates correct customIds for carpool buttons on row 3', () => {
+    const rows = buildActionRows(mockSession);
+    const buttons = (rows[2].toJSON() as any).components;
+    expect(buttons[0].custom_id).toBe(BTN.driving('sess-1'));
+    expect(buttons[1].custom_id).toBe(BTN.needRide('sess-1'));
+    expect(buttons[2].custom_id).toBe(BTN.carpoolSwitch('sess-1'));
+    expect(buttons[3].custom_id).toBe(BTN.autoAssign('sess-1'));
+  });
+
+  it('generates correct customId for muster button on row 4', () => {
+    const rows = buildActionRows(mockSession);
+    const buttons = (rows[3].toJSON() as any).components;
+    expect(buttons[0].custom_id).toBe(BTN.muster('sess-1'));
+  });
+
+  it('generates correct customIds for admin buttons on row 5', () => {
+    const rows = buildActionRows(mockSession);
+    const buttons = (rows[4].toJSON() as any).components;
+    expect(buttons[0].custom_id).toBe(BTN.finalize('sess-1'));
+    expect(buttons[1].custom_id).toBe(BTN.ping('sess-1'));
+    expect(buttons[2].custom_id).toBe(BTN.editTime('sess-1'));
   });
 });
 

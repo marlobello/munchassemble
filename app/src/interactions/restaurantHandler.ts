@@ -20,6 +20,7 @@ import {
 } from '../services/restaurantService.js';
 import { getTopFavorites } from '../services/favoriteService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
+import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildSessionEmbed, buildActionRows, buildVoteSelectMenu } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 
@@ -80,7 +81,6 @@ export async function handleVoteSelect(
   // Also refresh the main panel
   await refreshPanel(interaction, session, participants, restaurants);
 }
-
 /** [➕ Add Spot] button — shows quick-select favorites + free-text option (BR-020/BR-024). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
@@ -205,8 +205,11 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
   const leader = [...restaurants].sort((a, b) => b.votes.length - a.votes.length)[0];
   const updatedSession = await lockRestaurant(session, leader.id);
 
-  const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
-  const embed = buildSessionEmbed(updatedSession, participants, restaurants);
+  const [participants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const embed = buildSessionEmbed(updatedSession, participants, restaurants, carpools);
   const rows = buildActionRows(updatedSession);
 
   await interaction.update({ embeds: [embed], components: rows });
@@ -225,7 +228,8 @@ async function refreshPanel(
     if (!channel || !channel.isTextBased()) return;
     const panelMsg = await channel.messages.fetch(session.messageId);
     if (!panelMsg) return;
-    const embed = buildSessionEmbed(session, participants, restaurants);
+    const carpools = await getCarpoolsForSession(session.id);
+    const embed = buildSessionEmbed(session, participants, restaurants, carpools);
     const rows = buildActionRows(session);
     await panelMsg.edit({ embeds: [embed], components: rows });
   } catch {
