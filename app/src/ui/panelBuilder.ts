@@ -50,59 +50,78 @@ function buildPanelContent(
   const isLocked = session.status === SessionStatus.Locked;
   const title = isLocked ? '🔒 **FINALIZED – MUNCH ASSEMBLE**' : '🍔 **MUNCH ASSEMBLE**';
 
-  // Restaurant leaderboard
-  const sorted = [...restaurants].sort((a, b) => b.votes.length - a.votes.length);
-  const restaurantLines = sorted.length
-    ? sorted
-        .map((r, i) => {
-          const isLocked = session.lockedRestaurantId === r.id;
-          const prefix = isLocked ? '🔒' : `${i + 1}.`;
-          return `${prefix} **${r.name}** — ${r.votes.length} vote${r.votes.length !== 1 ? 's' : ''}`;
-        })
-        .join('\n')
-    : '*No options added yet*';
+  // ── 1. Title + Date ────────────────────────────────────────────────────────
+  const lines: string[] = [
+    `${title} – ${formatDate(session.date)}`,
+  ];
 
-  // Attendance groups
-  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
+  // ── 2. Timing (Depart first, then Lunch) ───────────────────────────────────
+  lines.push(
+    '',
+    `🕐 **Depart:** ${format12h(session.departTime)}  |  **Lunch:** ${format12h(session.lunchTime)}`,
+  );
+  if (session.notes) lines.push(`📝 **Notes:** ${session.notes}`);
+
+  // ── 3. Attendance ──────────────────────────────────────────────────────────
+  const inList    = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
   const maybeList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Maybe);
-  const outList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Out);
-  const soloList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.DrivingAlone);
+  const outList   = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Out);
 
-  const nameStr = (ps: Participant[]) => ps.length ? ps.map((p) => p.displayName).join(', ') : '*None yet*';
+  const nameStr = (ps: Participant[]) =>
+    ps.length ? ps.map((p) => p.displayName).join(', ') : '*None yet*';
 
-  const attendanceLine = [
+  lines.push(
+    '',
+    '### 👥 Attendance',
     `✅ **In (${inList.length}):** ${nameStr(inList)}`,
     `🤔 **Maybe (${maybeList.length}):** ${nameStr(maybeList)}`,
     `❌ **Out:** ${outList.length || '*None*'}`,
-    soloList.length ? `🚘 **Driving Alone:** ${soloList.map((p) => p.displayName).join(', ')}` : null,
-  ].filter(Boolean).join('\n');
+  );
 
-  const lines: string[] = [
-    `${title} – ${formatDate(session.date)}`,
-    '',
-    `### 📍 Restaurant Voting`,
-    restaurantLines,
-    '',
-    `### 👥 Attendance`,
-    attendanceLine,
-    '',
-    `⏰ **Lunch:** ${format12h(session.lunchTime)}  |  **Depart:** ${format12h(session.departTime)}`,
-  ];
+  // ── 4. Restaurant Voting ───────────────────────────────────────────────────
+  const sorted = [...restaurants].sort((a, b) => b.votes.length - a.votes.length);
+  const restaurantLines = sorted.length
+    ? sorted.map((r, i) => {
+        const locked = session.lockedRestaurantId === r.id;
+        const prefix = locked ? '🔒' : `${i + 1}.`;
+        return `${prefix} **${r.name}** — ${r.votes.length} vote${r.votes.length !== 1 ? 's' : ''}`;
+      }).join('\n')
+    : '*No options added yet*';
 
-  if (session.notes) {
-    lines.push(`📝 **Notes:** ${session.notes}`);
-  }
+  lines.push('', '### 📍 Restaurant Voting', restaurantLines);
 
-  if (carpools.length > 0) {
-    lines.push('', '### 🚗 Carpools');
+  // ── 5. Transportation ──────────────────────────────────────────────────────
+  const soloList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.DrivingAlone);
+  const unassignedRiders = participants.filter(
+    (p) => p.role === ParticipantRole.Rider && !p.assignedDriverId,
+  );
+
+  const hasTransport = soloList.length > 0 || carpools.length > 0 || unassignedRiders.length > 0;
+  if (hasTransport) {
+    lines.push('', '### 🚗 Transportation');
+
+    if (soloList.length > 0) {
+      lines.push(`🚘 **Driving Alone:** ${soloList.map((p) => p.displayName).join(', ')}`);
+    }
+
     for (const c of carpools) {
       const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? `<@${c.driverId}>`;
-      const riderNames = c.riders.map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`).join(', ');
+      const riderNames = c.riders
+        .map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`)
+        .join(', ');
       const seatsFree = c.seats - c.riders.length;
-      lines.push(`🚗 **${driverName}** (${c.riders.length}/${c.seats} seats${seatsFree > 0 ? `, ${seatsFree} open` : ', full'}) @ ${c.musterPoint}${c.riders.length > 0 ? ` — ${riderNames}` : ''}`);
+      const riderPart = c.riders.length > 0 ? ` — ${riderNames}` : '';
+      lines.push(
+        `🚗 **${driverName}** (${c.musterPoint}, ${seatsFree > 0 ? `${seatsFree} seat${seatsFree !== 1 ? 's' : ''} open` : 'full'})${riderPart}`,
+      );
+    }
+
+    if (unassignedRiders.length > 0) {
+      lines.push(`🚌 **Needing a ride:** ${unassignedRiders.map((p) => p.displayName).join(', ')}`);
     }
   }
 
+  // ── 6. Status ──────────────────────────────────────────────────────────────
   lines.push('', isLocked ? '🟢 *Status: Finalized*' : '🟡 *Status: Planning*');
 
   return lines.join('\n');
