@@ -16,22 +16,24 @@ param partitionKey string
 @description('Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default).')
 param defaultTtl int = 0
 
+// Base resource definition without TTL
+var baseResource = {
+  id: containerName
+  partitionKey: {
+    paths: [partitionKey]
+    kind: 'Hash'
+  }
+  indexingPolicy: {
+    indexingMode: 'consistent'
+    automatic: true
+  }
+}
+
 resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
   name: '${accountName}/${databaseName}/${containerName}'
   properties: {
-    resource: {
-      id: containerName
-      partitionKey: {
-        paths: [partitionKey]
-        kind: 'Hash'
-      }
-      // TTL: -1 = feature enabled, items expire only when _ttl is set on the document.
-      // Omit the field (0) to disable TTL entirely for containers that don't need it.
-      defaultTtl: defaultTtl == 0 ? null : defaultTtl
-      indexingPolicy: {
-        indexingMode: 'consistent'
-        automatic: true
-      }
-    }
+    // Use union() to add defaultTtl only when explicitly set (non-zero).
+    // Passing null/0 for defaultTtl causes a Cosmos BadRequest.
+    resource: defaultTtl != 0 ? union(baseResource, { defaultTtl: defaultTtl }) : baseResource
   }
 }
