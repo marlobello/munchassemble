@@ -51,6 +51,11 @@ export async function handleDrivingAloneButton(
   const isCurrentlyDrivingAlone = existing?.transportStatus === TransportStatus.DrivingAlone;
   const newTransport = isCurrentlyDrivingAlone ? TransportStatus.None : TransportStatus.DrivingAlone;
 
+  if (!isCurrentlyDrivingAlone) {
+    // Clear any active CanDrive carpool or NeedRide assignment before switching to Driving Alone
+    await clearCarpoolRole(session.id, interaction.user.id);
+  }
+
   await setTransport(
     session.id,
     interaction.user.id,
@@ -167,11 +172,12 @@ export async function handleNeedRideButton(
         ? (interaction.member as import('discord.js').GuildMember).displayName
         : interaction.user.displayName,
     );
-    await refreshPanelMessage(session, client);
+    // Reply before refreshing panel to stay within the 3s interaction window
     await interaction.reply({
       content: `✅ You've been marked as needing a ride. No drivers with open seats yet — you'll be assigned when one registers.`,
       flags: MessageFlags.Ephemeral,
     });
+    await refreshPanelMessage(session, client);
     return;
   }
 
@@ -233,11 +239,12 @@ export async function handleNeedRideSelect(
   const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
   const driverName = participants.find((p) => p.userId === driverId)?.displayName ?? 'your driver';
 
-  await refreshPanelMessage(session, client);
+  // Update the ephemeral first (must respond within 3s window), then refresh the panel
   await interaction.update({
     content: `✅ You're riding with **${driverName}**!`,
     components: [],
   });
+  await refreshPanelMessage(session, client);
 }
 
 /** [🔄 Switch] button — clears the user's carpool role. */

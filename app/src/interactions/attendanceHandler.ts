@@ -2,8 +2,8 @@ import type { ButtonInteraction, GuildMember } from 'discord.js';
 import { MessageFlags } from 'discord.js';
 import { AttendanceStatus } from '../types/index.js';
 import { rsvp, getParticipantsForSession } from '../services/participantService.js';
+import { clearCarpoolRole, getCarpoolsForSession } from '../services/carpoolService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
-import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
 
@@ -26,6 +26,13 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
   }
 
   const member = interaction.member as GuildMember;
+
+  // Out or Maybe → clean up any active carpool role before changing attendance.
+  // This cancels carpools, unassigns riders, and removes from driver's rider list.
+  if (status !== AttendanceStatus.In) {
+    await clearCarpoolRole(session.id, interaction.user.id);
+  }
+
   await rsvp(
     session.id,
     interaction.user.id,

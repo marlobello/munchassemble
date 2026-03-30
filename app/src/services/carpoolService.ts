@@ -23,6 +23,18 @@ export async function registerDriver(
   musterPoint: string,
 ): Promise<Carpool> {
   const now = new Date().toISOString();
+
+  // If user was previously a rider in someone else's carpool, remove them from it
+  const p = await getParticipant(sessionId, driverId);
+  if (p?.assignedDriverId) {
+    const prevCarpool = await getCarpoolByDriver(sessionId, p.assignedDriverId);
+    if (prevCarpool) {
+      prevCarpool.riders = prevCarpool.riders.filter((id) => id !== driverId);
+      prevCarpool.updatedAt = now;
+      await upsertCarpool(prevCarpool);
+    }
+  }
+
   const existing = await getCarpoolByDriver(sessionId, driverId);
   const carpool: Carpool = {
     id: `${sessionId}::${driverId}`,
@@ -36,7 +48,6 @@ export async function registerDriver(
   await upsertCarpool(carpool);
 
   // Update participant transport status
-  const p = await getParticipant(sessionId, driverId);
   const needsIn =
     !p?.attendanceStatus ||
     p.attendanceStatus === AttendanceStatus.Out ||
