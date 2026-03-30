@@ -127,8 +127,12 @@ describe('buildPanel (Components v2)', () => {
   it('transport row contains Driving Alone button', () => {
     const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
     const rows = getActionRows(components);
-    const transportBtns = rows[2].components; // row 0=attendance, 1=restaurant, 2=transport
-    const ids = transportBtns.map((b: any) => b.custom_id);
+    // row 0=attendance, 1=restaurant mgmt, 2=vote buttons (1 row for 2 restaurants), 3=transport
+    const transportRow = rows.find((r: any) =>
+      r.components.some((b: any) => b.custom_id === BTN.drivingAlone('sess-1')),
+    );
+    expect(transportRow).toBeDefined();
+    const ids = transportRow.components.map((b: any) => b.custom_id);
     expect(ids).toContain(BTN.drivingAlone('sess-1'));
     expect(ids).toContain(BTN.driving('sess-1'));
     expect(ids).toContain(BTN.needRide('sess-1'));
@@ -137,8 +141,11 @@ describe('buildPanel (Components v2)', () => {
   it('admin row has correct button customIds', () => {
     const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
     const rows = getActionRows(components);
-    const adminBtns = rows[3].components; // row 3 = admin (no location row)
-    const ids = adminBtns.map((b: any) => b.custom_id);
+    const adminRow = rows.find((r: any) =>
+      r.components.some((b: any) => b.custom_id === BTN.finalize('sess-1')),
+    );
+    expect(adminRow).toBeDefined();
+    const ids = adminRow.components.map((b: any) => b.custom_id);
     expect(ids).toContain(BTN.finalize('sess-1'));
     expect(ids).toContain(BTN.ping('sess-1'));
     expect(ids).toContain(BTN.editTime('sess-1'));

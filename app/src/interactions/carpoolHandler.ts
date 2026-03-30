@@ -4,9 +4,6 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
-  StringSelectMenuBuilder,
-  StringSelectMenuInteraction,
-  StringSelectMenuOptionBuilder,
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
@@ -21,7 +18,7 @@ import {
 } from '../services/carpoolService.js';
 import { getParticipantsForSession, setTransport } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
-import { buildPanel, SELECT } from '../ui/panelBuilder.js';
+import { buildPanel } from '../ui/panelBuilder.js';
 import { TransportStatus } from '../types/index.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { transportBlockedReason, canHostCarpool } from '../utils/stateRules.js';
@@ -166,7 +163,7 @@ export async function handleDrivingModal(
   }
 }
 
-/** [🚌 Need Ride] button — shows available Can Drive people with open seats. */
+/** [🚌 Need Ride] button — toggles NeedRide status directly on the panel (no ephemeral). */
 export async function handleNeedRideButton(
   interaction: ButtonInteraction,
   client: Client,
@@ -178,7 +175,64 @@ export async function handleNeedRideButton(
     return;
   }
 
-  // State machine: Out cannot request a ride
+  const participant = await getParticipant(session.id, interaction.user.id);
+
+  // State machine: Out cannot request a ride; toggle OFF is always allowed
+  const isCurrentlyNeedRide = participant?.transportStatus === TransportStatus.NeedRide;
+  if (!isCurrentlyNeedRide) {
+    const blocked = transportBlockedReason(participant, TransportStatus.NeedRide);
+    if (blocked) {
+      await interaction.reply({ content: blocked, flags: MessageFlags.Ephemeral });
+      return;
+    }
+  }
+
+  // Acknowledge immediately before DB work
+  await interaction.deferUpdate();
+
+  const member = interaction.member as import('discord.js').GuildMember;
+
+  if (isCurrentlyNeedRide) {
+    // Toggle off — clear the ride request
+    await clearCarpoolRole(session.id, interaction.user.id);
+  } else {
+    // Toggle on — register as needing a ride
+    await requestRide(
+      session.id,
+      interaction.user.id,
+      interaction.user.username,
+      member?.displayName ?? interaction.user.displayName,
+    );
+  }
+
+  const [updatedParticipants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+  await interaction.editReply(panel as any);
+}
+
+/**
+ * [🚗 Join Driver] inline button — assigns the user to a specific carpool driver (no ephemeral).
+ * customId: carpool:join:<sessionId>:<driverId>
+ */
+export async function handleJoinCarpoolButton(
+  interaction: ButtonInteraction,
+  client: Client,
+): Promise<void> {
+  const parts = interaction.customId.split(':');
+  const sessionId = parts[2];
+  const driverId = parts[3];
+
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  // State machine check before deferring (fast read)
   const participant = await getParticipant(session.id, interaction.user.id);
   const blocked = transportBlockedReason(participant, TransportStatus.NeedRide);
   if (blocked) {
@@ -186,70 +240,9 @@ export async function handleNeedRideButton(
     return;
   }
 
-  const [carpools, participants] = await Promise.all([
-    getCarpoolsForSession(session.id),
-    getParticipantsForSession(session.id),
-  ]);
+  // Acknowledge immediately before DB work
+  await interaction.deferUpdate();
 
-  const availableDrivers = carpools.filter(
-    (c) => c.seats > c.riders.length && c.driverId !== interaction.user.id,
-  );
-
-  if (availableDrivers.length === 0) {
-    // No drivers yet — just register as needing a ride
-    await requestRide(
-      session.id,
-      interaction.user.id,
-      interaction.user.username,
-      interaction.member
-        ? (interaction.member as import('discord.js').GuildMember).displayName
-        : interaction.user.displayName,
-    );
-    // Reply before refreshing panel to stay within the 3s interaction window
-    await interaction.reply({
-      content: `✅ You've been marked as needing a ride. No drivers with open seats yet — you'll be assigned when one registers.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    await refreshPanelMessage(session, client);
-    return;
-  }
-
-  const options = availableDrivers.map((c) => {
-    const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? `<@${c.driverId}>`;
-    const seatsLeft = c.seats - c.riders.length;
-    return new StringSelectMenuOptionBuilder()
-      .setLabel(`${driverName} — ${c.musterPoint}`)
-      .setDescription(`${seatsLeft} seat${seatsLeft !== 1 ? 's' : ''} available`)
-      .setValue(c.driverId);
-  });
-
-  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(SELECT.carpoolNeedRide(sessionId))
-      .setPlaceholder('Pick a driver to ride with')
-      .addOptions(options),
-  );
-
-  await interaction.reply({
-    content: '🚗 Choose your driver:',
-    components: [row],
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-/** Handle driver selection for a rider. */
-export async function handleNeedRideSelect(
-  interaction: StringSelectMenuInteraction,
-  client: Client,
-): Promise<void> {
-  const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.update({ content: '⚠️ Session expired.', components: [] });
-    return;
-  }
-
-  const driverId = interaction.values[0];
   const member = interaction.member as import('discord.js').GuildMember;
 
   try {
@@ -261,23 +254,21 @@ export async function handleNeedRideSelect(
       member?.displayName ?? interaction.user.displayName,
     );
   } catch (err) {
-    await interaction.update({
-      content: `❌ ${err instanceof Error ? err.message : 'Could not assign ride.'}`,
-      components: [],
+    // Can't editReply with an error on a deferUpdate — show as follow-up
+    await interaction.followUp({
+      content: `❌ ${err instanceof Error ? err.message : 'Could not join carpool.'}`,
+      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  // Fetch driver name for confirmation
-  const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
-  const driverName = participants.find((p) => p.userId === driverId)?.displayName ?? 'your driver';
-
-  // Update the ephemeral first (must respond within 3s window), then refresh the panel
-  await interaction.update({
-    content: `✅ You're riding with **${driverName}**!`,
-    components: [],
-  });
-  await refreshPanelMessage(session, client);
+  const [updatedParticipants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+  await interaction.editReply(panel as any);
 }
 
 /** [🔄 Switch] button — clears the user's carpool role. */

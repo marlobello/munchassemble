@@ -21,7 +21,7 @@ import {
 import { getTopFavorites } from '../services/favoriteService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { buildPanel, buildVoteSelectMenu } from '../ui/panelBuilder.js';
+import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { voteBlockedReason } from '../utils/stateRules.js';
@@ -29,61 +29,46 @@ import { getParticipant } from '../db/repositories/participantRepo.js';
 import { DuplicateError } from '../utils/errors.js';
 import type { Client } from 'discord.js';
 
-/** [🍔 Vote] button — shows a select menu of current restaurants (BR-021). */
-export async function handleVoteButton(interaction: ButtonInteraction): Promise<void> {
-  const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+/**
+ * [🗳️ RestaurantName (N)] inline vote button — direct vote, no ephemeral (BR-021).
+ * customId: restaurant:vote_for:<sessionId>:<restaurantId>
+ */
+export async function handleVoteForButton(
+  interaction: ButtonInteraction,
+  client: Client,
+): Promise<void> {
+  const parts = interaction.customId.split(':');
+  const sessionId = parts[2];
+  const restaurantId = parts[3];
 
-  // State machine: Out users cannot vote
-  const participant = await getParticipant(session.id, interaction.user.id);
+  // State machine check is synchronous — do it before deferring
+  const participant = await getParticipant(sessionId, interaction.user.id);
   const blocked = voteBlockedReason(participant);
   if (blocked) {
     await interaction.reply({ content: blocked, flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const restaurants = await getRestaurantsForSession(session.id);
-  if (restaurants.length === 0) {
-    await interaction.reply({
-      content: '🍽️ No restaurants added yet. Click **➕ Add Spot** first!',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  const selectRow = buildVoteSelectMenu(session.id, restaurants);
-  await interaction.reply({
-    content: '**Vote for a restaurant:**',
-    components: [selectRow],
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-/** Vote select menu submission (BR-021). */
-export async function handleVoteSelect(
-  interaction: StringSelectMenuInteraction,
-  client: Client,
-): Promise<void> {
-  const [, , sessionId] = interaction.customId.split(':');
-  const restaurantId = interaction.values[0];
+  // Acknowledge immediately — all DB work happens after
+  await interaction.deferUpdate();
 
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
-    await interaction.update({ content: '⚠️ Session not active.', components: [] });
+    // Session gone — panel is stale, nothing to update
     return;
   }
 
   await voteForRestaurant(session.id, restaurantId, interaction.user.id);
 
-  // Dismiss the ephemeral picker immediately (direct update — reliable on mobile)
-  // then REST PATCH the main panel so the vote count updates for everyone.
-  await interaction.update({ content: '✅ Vote recorded!', components: [] });
-  await refreshPanelMessage(session, client);
+  const [participants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, participants, restaurants, carpools);
+  await interaction.editReply(panel as any);
 }
+
 /** [➕ Add Spot] button — shows favorites not already in session + free-text option (BR-020/BR-024). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
@@ -142,15 +127,18 @@ export async function handleAddSpotSelect(
   const value = interaction.values[0];
 
   if (value === '__new__') {
-    // Modal must be the first response — call directly with no prior update
+    // Modal must be the first (and only) response — no defer allowed before showModal
     await showAddSpotModal(interaction, sessionId);
     return;
   }
 
+  // Defer immediately before any DB work to stay within the 3s window
+  await interaction.deferUpdate();
+
   const name = value.replace(/^fav::/, '');
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
-    await interaction.update({ content: '⚠️ Session not active.', components: [] });
+    await interaction.editReply({ content: '⚠️ Session not active.', components: [] });
     return;
   }
 
@@ -158,14 +146,14 @@ export async function handleAddSpotSelect(
     await addRestaurant(session.id, session.guildId, name, interaction.user.id);
   } catch (err: unknown) {
     if (err instanceof DuplicateError) {
-      await interaction.update({ content: `⚠️ **${name}** is already on the list!`, components: [] });
+      await interaction.editReply({ content: `⚠️ **${name}** is already on the list!`, components: [] });
       return;
     }
     throw err;
   }
-  // Dismiss the ephemeral picker immediately, then refresh the main panel.
-  await interaction.update({ content: `✅ **${name}** added!`, components: [] });
+
   await refreshPanelMessage(session, client);
+  await interaction.editReply({ content: `✅ **${name}** added!`, components: [] });
 }
 
 /** Modal for free-text restaurant entry. */
@@ -200,17 +188,21 @@ export async function handleAddSpotModal(
     return;
   }
 
+  // Defer before DB work to stay within the 3s window
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   try {
     await addRestaurant(session.id, session.guildId, name, interaction.user.id);
   } catch (err: unknown) {
     if (err instanceof DuplicateError) {
-      await interaction.reply({ content: `⚠️ **${name}** is already on the list!`, flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: `⚠️ **${name}** is already on the list!` });
       return;
     }
     throw err;
   }
-  await interaction.reply({ content: `✅ **${name}** added to the vote!`, flags: MessageFlags.Ephemeral });
+
   await refreshPanelMessage(session, client);
+  await interaction.editReply({ content: `✅ **${name}** added to the vote!` });
 }
 
 /** [🔒 Lock Choice] button — locks the leading restaurant (BR-023). */
@@ -253,3 +245,4 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+

@@ -6,8 +6,6 @@ import {
   MessageFlags,
   SeparatorBuilder,
   SeparatorSpacingSize,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
   TextDisplayBuilder,
 } from 'discord.js';
 import type { LunchSession, Participant, Restaurant, Carpool } from '../types/index.js';
@@ -21,21 +19,19 @@ export const BTN = {
   maybe: (sid: string) => `rsvp:maybe:${sid}`,
   out: (sid: string) => `rsvp:out:${sid}`,
   drivingAlone: (sid: string) => `carpool:driving_alone:${sid}`,
-  vote: (sid: string) => `restaurant:vote:${sid}`,
+  /** Inline vote for a specific restaurant — no ephemeral needed */
+  voteFor: (sid: string, rid: string) => `restaurant:vote_for:${sid}:${rid}`,
   addSpot: (sid: string) => `restaurant:add:${sid}`,
   lockChoice: (sid: string) => `restaurant:lock:${sid}`,
   driving: (sid: string) => `carpool:driving:${sid}`,
   needRide: (sid: string) => `carpool:need_ride:${sid}`,
+  /** Inline join a specific carpool driver — no ephemeral needed */
+  joinCarpool: (sid: string, driverId: string) => `carpool:join:${sid}:${driverId}`,
   carpoolSwitch: (sid: string) => `carpool:switch:${sid}`,
   autoAssign: (sid: string) => `carpool:auto_assign:${sid}`,
   editTime: (sid: string) => `admin:edit_time:${sid}`,
   finalize: (sid: string) => `admin:finalize:${sid}`,
   ping: (sid: string) => `admin:ping:${sid}`,
-} as const;
-
-export const SELECT = {
-  vote: (sid: string) => `select:vote:${sid}`,
-  carpoolNeedRide: (sid: string) => `carpool:need_ride_select:${sid}`,
 } as const;
 
 // ─── Panel content (replaces embed) ──────────────────────────────────────────
@@ -141,13 +137,65 @@ function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> 
   );
 }
 
-/** Row 2 — Restaurant */
+/** Row 2 — Restaurant management (Add Spot + Lock Choice; votes are inline per restaurant) */
 function buildRestaurantRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(BTN.vote(sessionId)).setLabel('🍔 Vote').setStyle(ButtonStyle.Primary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.addSpot(sessionId)).setLabel('➕ Add Spot').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.lockChoice(sessionId)).setLabel('🔒 Lock Choice').setStyle(ButtonStyle.Danger).setDisabled(locked),
   );
+}
+
+/** Inline vote buttons — one per restaurant, grouped in rows of 5. */
+function buildVoteButtonRows(
+  sessionId: string,
+  restaurants: Restaurant[],
+  locked: boolean,
+): ActionRowBuilder<ButtonBuilder>[] {
+  if (restaurants.length === 0) return [];
+  const sorted = [...restaurants].sort((a, b) => b.votes.length - a.votes.length);
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < sorted.length; i += 5) {
+    const chunk = sorted.slice(i, i + 5);
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      chunk.map((r) => {
+        const label = `${r.name} (${r.votes.length})`.slice(0, 80);
+        return new ButtonBuilder()
+          .setCustomId(BTN.voteFor(sessionId, r.id))
+          .setLabel(label)
+          .setStyle(ButtonStyle.Primary)
+          .setDisabled(locked);
+      }),
+    );
+    rows.push(row);
+  }
+  return rows;
+}
+
+/** Inline "Join [Driver]" buttons — one per carpool with open seats, grouped in rows of 5. */
+function buildJoinCarpoolRows(
+  sessionId: string,
+  carpools: Carpool[],
+  participants: Participant[],
+): ActionRowBuilder<ButtonBuilder>[] {
+  const available = carpools.filter((c) => c.seats > c.riders.length);
+  if (available.length === 0) return [];
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  for (let i = 0; i < available.length; i += 5) {
+    const chunk = available.slice(i, i + 5);
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      chunk.map((c) => {
+        const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? 'Driver';
+        const seatsLeft = c.seats - c.riders.length;
+        const label = `🚗 ${driverName} — ${c.musterPoint} (${seatsLeft})`.slice(0, 80);
+        return new ButtonBuilder()
+          .setCustomId(BTN.joinCarpool(sessionId, c.driverId))
+          .setLabel(label)
+          .setStyle(ButtonStyle.Success);
+      }),
+    );
+    rows.push(row);
+  }
+  return rows;
 }
 
 /** Row 3 — Transportation */
@@ -213,37 +261,37 @@ export function buildPanel(
     .addSeparatorComponents(sep())
     // ── Restaurant ──
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Restaurant ──**'))
-    .addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked))
+    .addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked));
+
+  // Inline vote buttons — one per restaurant (no ephemeral needed)
+  for (const voteRow of buildVoteButtonRows(session.id, restaurants, restaurantLocked)) {
+    container.addActionRowComponents(voteRow);
+  }
+
+  container
     .addSeparatorComponents(sep())
     // ── Transportation ──
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Transportation ──**'))
-    .addActionRowComponents(buildTransportRow(session.id, false))
+    .addActionRowComponents(buildTransportRow(session.id, false));
+
+  // Inline join-carpool buttons — one per driver with open seats (no ephemeral needed)
+  const joinRows = buildJoinCarpoolRows(session.id, carpools, participants);
+  if (joinRows.length > 0) {
+    container.addTextDisplayComponents(
+      new TextDisplayBuilder().setContent('*Pick a driver to ride with:*'),
+    );
+    for (const joinRow of joinRows) {
+      container.addActionRowComponents(joinRow);
+    }
+  }
+
+  container
     .addSeparatorComponents(sep())
     // ── Admin ──
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Admin ──**'))
     .addActionRowComponents(buildAdminRow(session.id, false));
 
   return { flags: MessageFlags.IsComponentsV2, components: [container] };
-}
-
-/** Vote select menu — shown in a follow-up ephemeral message. */
-export function buildVoteSelectMenu(
-  sessionId: string,
-  restaurants: Restaurant[],
-): ActionRowBuilder<StringSelectMenuBuilder> {
-  const options = restaurants.map((r) =>
-    new StringSelectMenuOptionBuilder()
-      .setLabel(r.name)
-      .setValue(r.id)
-      .setDescription(`${r.votes.length} vote${r.votes.length !== 1 ? 's' : ''}`),
-  );
-
-  return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(SELECT.vote(sessionId))
-      .setPlaceholder('Choose a restaurant to vote for')
-      .addOptions(options),
-  );
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────

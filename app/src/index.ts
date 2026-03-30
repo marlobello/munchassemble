@@ -18,8 +18,7 @@ import { data as munchAssembleCommand } from './commands/munchassemble.js';
 import { data as munchAssembleConfigCommand } from './commands/munchassembleConfig.js';
 import { handleAttendanceButton } from './interactions/attendanceHandler.js';
 import {
-  handleVoteButton,
-  handleVoteSelect,
+  handleVoteForButton,
   handleAddSpotButton,
   handleAddSpotSelect,
   handleAddSpotModal,
@@ -36,7 +35,7 @@ import {
   handleDrivingModal,
   handleDrivingAloneButton,
   handleNeedRideButton,
-  handleNeedRideSelect,
+  handleJoinCarpoolButton,
   handleCarpoolSwitchButton,
   handleAutoAssignButton,
 } from './interactions/carpoolHandler.js';
@@ -162,13 +161,14 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
     if (namespace === 'rsvp') {
       await handleAttendanceButton(btn);
     } else if (namespace === 'restaurant') {
-      if (action === 'vote') await handleVoteButton(btn);
+      if (action === 'vote_for') await handleVoteForButton(btn, client);
       else if (action === 'add') await handleAddSpotButton(btn);
       else if (action === 'lock') await handleLockChoiceButton(btn);
     } else if (namespace === 'carpool') {
       if (action === 'driving') await handleDrivingButton(btn);
       else if (action === 'driving_alone') await handleDrivingAloneButton(btn, client);
       else if (action === 'need_ride') await handleNeedRideButton(btn, client);
+      else if (action === 'join') await handleJoinCarpoolButton(btn, client);
       else if (action === 'switch') await handleCarpoolSwitchButton(btn, client);
       else if (action === 'auto_assign') await handleAutoAssignButton(btn, client);
     } else if (namespace === 'admin') {
@@ -184,12 +184,8 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
     const select = interaction as StringSelectMenuInteraction;
     const [namespace, action] = select.customId.split(':');
 
-    if (namespace === 'select' && action === 'vote') {
-      await handleVoteSelect(select, client);
-    } else if (namespace === 'restaurant' && action === 'add_select') {
+    if (namespace === 'restaurant' && action === 'add_select') {
       await handleAddSpotSelect(select, client);
-    } else if (namespace === 'carpool' && action === 'need_ride_select') {
-      await handleNeedRideSelect(select, client);
     }
     return;
   }
