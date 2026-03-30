@@ -42,9 +42,9 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
 
   const lines: string[] = [
     `🔒 **Plan finalized!**`,
-    `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}`,
+    `⏰ **Depart:** ${updatedSession.departTime} | **Lunch:** ${updatedSession.lunchTime}`,
     `👥 **Going (${inList.length}):** ${inList.map((p) => p.displayName).join(', ') || 'TBD'}`,
-    `⏰ **Lunch:** ${updatedSession.lunchTime} | **Depart:** ${updatedSession.departTime}`,
+    `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}`,
   ];
 
   // Transportation details
