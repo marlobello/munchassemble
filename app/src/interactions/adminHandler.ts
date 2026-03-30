@@ -172,10 +172,10 @@ export async function handleEditTimeModal(
 
     const panel = buildPanel(updated, participants, restaurants, carpools);
 
-    if (session.messageId && interaction.channelId) {
+    if (session.messageId) {
       try {
         await interaction.client.rest.patch(
-          Routes.channelMessage(interaction.channelId, session.messageId),
+          Routes.channelMessage(session.channelId, session.messageId),
           { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
         );
       } catch (err) {

@@ -254,7 +254,7 @@ async function refreshPanel(
     const carpools = await getCarpoolsForSession(session.id);
     const panel = buildPanel(session, participants, restaurants, carpools);
     await interaction.client.rest.patch(
-      Routes.channelMessage(interaction.channelId, session.messageId),
+      Routes.channelMessage(session.channelId, session.messageId),
       { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
     );
   } catch (err) {

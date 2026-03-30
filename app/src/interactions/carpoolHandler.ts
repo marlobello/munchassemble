@@ -252,10 +252,10 @@ async function refreshPanel(
   const panel = buildPanel(session, participants, restaurants, carpools);
 
   // Edit the original panel message via REST PATCH (avoids ReadMessageHistory permission)
-  if (session.messageId && interaction.channelId) {
+  if (session.messageId) {
     try {
       await client.rest.patch(
-        Routes.channelMessage(interaction.channelId, session.messageId),
+        Routes.channelMessage(session.channelId, session.messageId),
         { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
       );
     } catch {
