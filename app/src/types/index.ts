@@ -10,9 +10,23 @@ export enum AttendanceStatus {
   In = 'in',
   Maybe = 'maybe',
   Out = 'out',
+  /** @deprecated Legacy DB value — no longer written; read only for migration. */
   DrivingAlone = 'driving_alone',
 }
 
+/**
+ * How the participant is getting to lunch.
+ * Only valid when attendanceStatus === In.
+ * Out or Maybe participants must have TransportStatus.None.
+ */
+export enum TransportStatus {
+  None = 'none',
+  DrivingAlone = 'driving_alone',
+  CanDrive = 'can_drive',
+  NeedRide = 'need_ride',
+}
+
+/** @deprecated Legacy field — use TransportStatus instead. */
 export enum ParticipantRole {
   Driver = 'driver',
   Rider = 'rider',
@@ -46,7 +60,7 @@ export interface LunchSession {
   updatedAt: string;
 }
 
-/** RSVP + carpool role for one user within a session. */
+/** RSVP + transport for one user within a session. */
 export interface Participant {
   /** Composite: `${sessionId}::${userId}` */
   id: string;
@@ -55,12 +69,15 @@ export interface Participant {
   username: string;
   displayName: string;
   attendanceStatus: AttendanceStatus;
-  role: ParticipantRole;
-  /** True when the user is driving to lunch independently (no carpool). */
-  drivingAlone?: boolean;
-  /** userId of assigned driver (when role === Rider, BR-031). */
+  /** How the participant is getting to lunch (only set when attendanceStatus === In). */
+  transportStatus?: TransportStatus;
+  /** userId of assigned driver (when transportStatus === NeedRide, BR-031). */
   assignedDriverId?: string;
-  /** Name of selected muster point (BR-040). */
+  /** @deprecated Legacy field — use transportStatus instead. */
+  role?: ParticipantRole;
+  /** @deprecated Legacy field — use transportStatus === DrivingAlone instead. */
+  drivingAlone?: boolean;
+  /** @deprecated Legacy field. */
   musterPoint?: string;
   updatedAt: string;
 }

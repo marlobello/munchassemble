@@ -20,9 +20,10 @@ import {
   getCarpoolsForSession,
   assignRiderToDriver,
 } from '../services/carpoolService.js';
-import { getParticipantsForSession } from '../services/participantService.js';
+import { getParticipantsForSession, setTransport } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { buildPanel, SELECT } from '../ui/panelBuilder.js';
+import { TransportStatus } from '../types/index.js';
 import type { Client } from 'discord.js';
 
 export const CARPOOL_SELECT = {
@@ -30,7 +31,44 @@ export const CARPOOL_SELECT = {
   musterDrive: (sid: string) => `carpool:muster_drive:${sid}`,
 };
 
-/** [🚗 Can Drive] button — opens modal for seats + pickup point. */
+/**
+ * [🚘 Driving Alone] button — toggles DrivingAlone transport status.
+ * customId: carpool:driving_alone:<sessionId>
+ */
+export async function handleDrivingAloneButton(
+  interaction: ButtonInteraction,
+  client: Client,
+): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const member = interaction.member as import('discord.js').GuildMember;
+  const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
+  const existing = participants.find((p) => p.userId === interaction.user.id);
+
+  // Toggle: if already DrivingAlone, clear it; otherwise set it
+  const newTransport =
+    existing?.transportStatus === TransportStatus.DrivingAlone
+      ? TransportStatus.None
+      : TransportStatus.DrivingAlone;
+
+  await setTransport(
+    session.id,
+    interaction.user.id,
+    interaction.user.username,
+    member?.displayName ?? interaction.user.displayName,
+    newTransport,
+  );
+
+  await refreshPanel(interaction, session, client);
+  await interaction.deferUpdate();
+}
+
+
 export async function handleDrivingButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
 

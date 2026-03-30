@@ -1,7 +1,7 @@
 import { ItemDefinition } from '@azure/cosmos';
 import { getDatabase, CONTAINERS } from '../cosmosClient.js';
 import type { Participant } from '../../types/index.js';
-import { AttendanceStatus } from '../../types/index.js';
+import { AttendanceStatus, TransportStatus } from '../../types/index.js';
 
 const container = () => getDatabase().container(CONTAINERS.participants);
 
@@ -33,7 +33,7 @@ export async function getParticipant(
   }
 }
 
-/** Returns participants who have not RSVPed (not in/maybe/out) — used for Ping Unanswered (BR-012). */
+/** Returns participants who have not RSVPed — used for Ping Unanswered (BR-012). */
 export async function getUnansweredUserIds(
   sessionId: string,
   allGuildMemberIds: string[],
@@ -43,6 +43,11 @@ export async function getUnansweredUserIds(
   return allGuildMemberIds.filter((id) => !answeredIds.has(id));
 }
 
+/**
+ * Update a participant's attendance status.
+ * Setting Out or Maybe clears transport status — you can't commit to a transport
+ * mode if you might not be going (BR-rule: transport only valid when In).
+ */
 export async function updateAttendanceStatus(
   sessionId: string,
   userId: string,
@@ -52,14 +57,18 @@ export async function updateAttendanceStatus(
 ): Promise<Participant> {
   const existing = await getParticipant(sessionId, userId);
   const now = new Date().toISOString();
+
+  // Out or Maybe → clear transport entirely; transport only valid when In
+  const clearTransport = status === AttendanceStatus.Out || status === AttendanceStatus.Maybe;
+
   const participant: Participant = existing
     ? {
         ...existing,
         attendanceStatus: status,
-        // Clear drivingAlone when marking Out
-        drivingAlone: status === AttendanceStatus.Out ? undefined : existing.drivingAlone,
-        // DrivingAlone (legacy) — clear musterPoint
-        musterPoint: status === AttendanceStatus.DrivingAlone ? undefined : existing.musterPoint,
+        transportStatus: clearTransport ? TransportStatus.None : existing.transportStatus,
+        // Clear legacy fields too
+        drivingAlone: clearTransport ? undefined : existing.drivingAlone,
+        assignedDriverId: clearTransport ? undefined : existing.assignedDriverId,
         updatedAt: now,
       }
     : {
@@ -69,33 +78,48 @@ export async function updateAttendanceStatus(
         username,
         displayName,
         attendanceStatus: status,
-        role: 'none' as Participant['role'],
+        transportStatus: TransportStatus.None,
         updatedAt: now,
       };
   return upsertParticipant(participant);
 }
 
-/** Toggle the drivingAlone flag independently of attendance status.
- *  Enabling ensures the participant is marked In (not Out). */
-export async function updateDrivingAlone(
+/**
+ * Update a participant's transport status.
+ * Setting any non-None transport status on a user who is Out/Maybe/unset
+ * auto-promotes their attendance to In (can't drive or ride if not going).
+ * Setting None clears transport and leaves attendance unchanged.
+ */
+export async function updateTransportStatus(
   sessionId: string,
   userId: string,
   username: string,
   displayName: string,
+  transport: TransportStatus,
 ): Promise<Participant> {
   const existing = await getParticipant(sessionId, userId);
   const now = new Date().toISOString();
-  const enabling = !existing?.drivingAlone;
+
+  const requiresIn = transport !== TransportStatus.None;
+  const currentAttendance = existing?.attendanceStatus;
+  const shouldPromoteToIn =
+    requiresIn &&
+    (!currentAttendance ||
+      currentAttendance === AttendanceStatus.Out ||
+      currentAttendance === AttendanceStatus.Maybe ||
+      // Legacy: old driving_alone records
+      currentAttendance === AttendanceStatus.DrivingAlone);
 
   const participant: Participant = existing
     ? {
         ...existing,
-        drivingAlone: enabling ? true : undefined,
-        // If enabling and currently Out (or unset), flip to In
-        attendanceStatus:
-          enabling && (!existing.attendanceStatus || existing.attendanceStatus === AttendanceStatus.Out)
-            ? AttendanceStatus.In
-            : existing.attendanceStatus,
+        transportStatus: transport,
+        attendanceStatus: shouldPromoteToIn ? AttendanceStatus.In : existing.attendanceStatus,
+        // Clear assignedDriverId when no longer NeedRide
+        assignedDriverId:
+          transport === TransportStatus.NeedRide ? existing.assignedDriverId : undefined,
+        // Clear legacy fields
+        drivingAlone: undefined,
         updatedAt: now,
       }
     : {
@@ -104,9 +128,8 @@ export async function updateDrivingAlone(
         userId,
         username,
         displayName,
-        attendanceStatus: AttendanceStatus.In,
-        role: 'none' as Participant['role'],
-        drivingAlone: true,
+        attendanceStatus: requiresIn ? AttendanceStatus.In : AttendanceStatus.Out,
+        transportStatus: transport,
         updatedAt: now,
       };
   return upsertParticipant(participant);

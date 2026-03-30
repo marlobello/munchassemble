@@ -34,6 +34,7 @@ import {
 import {
   handleDrivingButton,
   handleDrivingModal,
+  handleDrivingAloneButton,
   handleNeedRideButton,
   handleNeedRideSelect,
   handleCarpoolSwitchButton,
@@ -161,6 +162,7 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       else if (action === 'lock') await handleLockChoiceButton(btn);
     } else if (namespace === 'carpool') {
       if (action === 'driving') await handleDrivingButton(btn);
+      else if (action === 'driving_alone') await handleDrivingAloneButton(btn, client);
       else if (action === 'need_ride') await handleNeedRideButton(btn, client);
       else if (action === 'switch') await handleCarpoolSwitchButton(btn, client);
       else if (action === 'auto_assign') await handleAutoAssignButton(btn, client);

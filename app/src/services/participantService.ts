@@ -1,7 +1,7 @@
-import type { Participant, AttendanceStatus } from '../types/index.js';
+import type { Participant, AttendanceStatus, TransportStatus } from '../types/index.js';
 import {
   updateAttendanceStatus,
-  updateDrivingAlone,
+  updateTransportStatus,
   getParticipantsForSession,
   getUnansweredUserIds,
 } from '../db/repositories/participantRepo.js';
@@ -16,13 +16,15 @@ export async function rsvp(
   return updateAttendanceStatus(sessionId, userId, username, displayName, status);
 }
 
-export async function toggleDrivingAlone(
+/** Set a participant's transport status. Auto-promotes to In if currently Out/Maybe. */
+export async function setTransport(
   sessionId: string,
   userId: string,
   username: string,
   displayName: string,
+  transport: TransportStatus,
 ): Promise<Participant> {
-  return updateDrivingAlone(sessionId, userId, username, displayName);
+  return updateTransportStatus(sessionId, userId, username, displayName, transport);
 }
 
 export { getParticipantsForSession, getUnansweredUserIds };

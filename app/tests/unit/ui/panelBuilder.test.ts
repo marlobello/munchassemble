@@ -1,6 +1,6 @@
 import { MessageFlags } from 'discord.js';
 import { buildPanel, format12h, BTN } from '../../../src/ui/panelBuilder';
-import { LunchSession, Participant, Restaurant, SessionStatus, AttendanceStatus, ParticipantRole } from '../../../src/types';
+import { LunchSession, Participant, Restaurant, SessionStatus, AttendanceStatus } from '../../../src/types';
 
 const mockSession: LunchSession = {
   id: 'sess-1',
@@ -24,7 +24,6 @@ const mockParticipants: Participant[] = [
     username: 'alice',
     displayName: 'Alice',
     attendanceStatus: AttendanceStatus.In,
-    role: ParticipantRole.None,
     updatedAt: new Date().toISOString(),
   },
   {
@@ -34,7 +33,6 @@ const mockParticipants: Participant[] = [
     username: 'bob',
     displayName: 'Bob',
     attendanceStatus: AttendanceStatus.Maybe,
-    role: ParticipantRole.None,
     updatedAt: new Date().toISOString(),
   },
 ];
