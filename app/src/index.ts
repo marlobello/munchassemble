@@ -11,7 +11,6 @@ import {
   ChatInputCommandInteraction,
 } from 'discord.js';
 import { initConfig, getConfig } from './config.js';
-import { migrateParticipantLegacyFields } from './db/migrations/participantMigration.js';
 import { expireOldSessions, getActiveSessionForGuild } from './services/sessionService.js';
 import { execute as executeMunchAssemble, handleCreateSessionModal } from './commands/munchassemble.js';
 import { execute as executeMunchAssembleConfig } from './commands/munchassembleConfig.js';
@@ -63,13 +62,6 @@ async function registerCommands(appId: string, guildId: string, token: string): 
 async function main(): Promise<void> {
   await initConfig();
   const config = getConfig();
-
-  // Run DB migrations before accepting interactions
-  try {
-    await migrateParticipantLegacyFields();
-  } catch (err) {
-    console.error('[bot] Migration failed (non-fatal):', err);
-  }
 
   const client = new Client({
     intents: [
