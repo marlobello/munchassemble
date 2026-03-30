@@ -13,7 +13,7 @@ import { getParticipant, upsertParticipant } from '../db/repositories/participan
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
-import { buildSessionEmbed, buildActionRows, SELECT } from '../ui/panelBuilder.js';
+import { buildPanel, SELECT } from '../ui/panelBuilder.js';
 import { AttendanceStatus } from '../types/index.js';
 import type { Client } from 'discord.js';
 
@@ -101,13 +101,12 @@ async function refreshPanel(
     getCarpoolsForSession(session.id),
   ]);
 
-  const embed = buildSessionEmbed(session, participants, restaurants, carpools);
-  const rows = buildActionRows(session);
+  const panel = buildPanel(session, participants, restaurants, carpools);
 
   try {
     await client.rest.patch(
       Routes.channelMessage(interaction.channelId, session.messageId),
-      { body: { embeds: [embed.toJSON()], components: rows.map((r) => r.toJSON()) } },
+      { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
     );
   } catch (err) {
     console.error('[panel] Failed to refresh panel after muster select:', err);

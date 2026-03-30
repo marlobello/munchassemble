@@ -22,7 +22,7 @@ import {
 import { getTopFavorites } from '../services/favoriteService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { buildSessionEmbed, buildActionRows, buildVoteSelectMenu } from '../ui/panelBuilder.js';
+import { buildPanel, buildVoteSelectMenu } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 
 /** [🍔 Vote] button — shows a select menu of current restaurants (BR-021). */
@@ -237,10 +237,8 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
     getParticipantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const embed = buildSessionEmbed(updatedSession, participants, restaurants, carpools);
-  const rows = buildActionRows(updatedSession);
-
-  await interaction.update({ embeds: [embed], components: rows });
+  const panel = buildPanel(updatedSession, participants, restaurants, carpools);
+  await interaction.update(panel as any);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -254,12 +252,10 @@ async function refreshPanel(
   if (!session.messageId) return;
   try {
     const carpools = await getCarpoolsForSession(session.id);
-    const embed = buildSessionEmbed(session, participants, restaurants, carpools);
-    const rows = buildActionRows(session);
-    // Use REST PATCH directly — avoids needing ReadMessageHistory to fetch first
+    const panel = buildPanel(session, participants, restaurants, carpools);
     await interaction.client.rest.patch(
       Routes.channelMessage(interaction.channelId, session.messageId),
-      { body: { embeds: [embed.toJSON()], components: rows.map((r) => r.toJSON()) } },
+      { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
     );
   } catch (err) {
     console.error('[panel] Failed to refresh panel after vote:', err);

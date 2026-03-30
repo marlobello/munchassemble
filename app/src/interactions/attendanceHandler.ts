@@ -5,7 +5,7 @@ import { rsvp, getParticipantsForSession } from '../services/participantService.
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
-import { buildSessionEmbed, buildActionRows } from '../ui/panelBuilder.js';
+import { buildPanel } from '../ui/panelBuilder.js';
 
 /**
  * Handles the three RSVP buttons: ✅ In / 🤔 Maybe / ❌ Out (BR-010).
@@ -39,9 +39,6 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
     getCarpoolsForSession(session.id),
   ]);
 
-  const embed = buildSessionEmbed(session, participants, restaurants, carpools);
-  const rows = buildActionRows(session);
-
-  // Update the panel in-place
-  await interaction.update({ embeds: [embed], components: rows });
+  const panel = buildPanel(session, participants, restaurants, carpools);
+  await interaction.update(panel as any);
 }

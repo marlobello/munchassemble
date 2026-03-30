@@ -4,6 +4,7 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
+  Routes,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
   StringSelectMenuOptionBuilder,
@@ -21,7 +22,7 @@ import {
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getMusterPoints } from '../services/musterService.js';
-import { buildSessionEmbed, buildActionRows, SELECT } from '../ui/panelBuilder.js';
+import { buildPanel, SELECT } from '../ui/panelBuilder.js';
 import type { Client } from 'discord.js';
 
 export const CARPOOL_SELECT = {
@@ -248,14 +249,15 @@ async function refreshPanel(
     getCarpoolsForSession(session.id),
   ]);
 
-  const embed = buildSessionEmbed(session, participants, restaurants, carpools);
-  const rows = buildActionRows(session);
+  const panel = buildPanel(session, participants, restaurants, carpools);
 
-  // Edit the original panel message
-  if (session.messageId && interaction.channel) {
+  // Edit the original panel message via REST PATCH (avoids ReadMessageHistory permission)
+  if (session.messageId && interaction.channelId) {
     try {
-      const msg = await interaction.channel.messages.fetch(session.messageId);
-      await msg.edit({ embeds: [embed], components: rows });
+      await client.rest.patch(
+        Routes.channelMessage(interaction.channelId, session.messageId),
+        { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
+      );
     } catch {
       // Panel message may have been deleted — not critical
     }

@@ -4,7 +4,7 @@ import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '.
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { buildSessionEmbed, buildActionRows } from '../ui/panelBuilder.js';
+import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 
 /** [🔒 Finalize Plan] button — locks the session (BR-004). Creator/admin only. */
@@ -31,10 +31,8 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
     getCarpoolsForSession(session.id),
   ]);
 
-  const embed = buildSessionEmbed(updatedSession, participants, restaurants, carpools);
-  const rows = buildActionRows(updatedSession);
-
-  await interaction.update({ embeds: [embed], components: rows });
+  const panel = buildPanel(updatedSession, participants, restaurants, carpools);
+  await interaction.update(panel as any);
 
   // Post a summary message to the channel
   const inList = participants.filter((p) => p.attendanceStatus === 'in');
@@ -172,14 +170,13 @@ export async function handleEditTimeModal(
       getCarpoolsForSession(session.id),
     ]);
 
-    const embed = buildSessionEmbed(updated, participants, restaurants, carpools);
-    const rows = buildActionRows(updated);
+    const panel = buildPanel(updated, participants, restaurants, carpools);
 
     if (session.messageId && interaction.channelId) {
       try {
         await interaction.client.rest.patch(
           Routes.channelMessage(interaction.channelId, session.messageId),
-          { body: { embeds: [embed.toJSON()], components: rows.map((r) => r.toJSON()) } },
+          { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
         );
       } catch (err) {
         console.error('[panel] Failed to refresh panel after time edit:', err);

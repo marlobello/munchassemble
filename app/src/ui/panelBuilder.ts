@@ -2,9 +2,13 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
+  ContainerBuilder,
+  MessageFlags,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
+  TextDisplayBuilder,
 } from 'discord.js';
 import type { LunchSession, Participant, Restaurant, Carpool } from '../types/index.js';
 import { AttendanceStatus, SessionStatus, ParticipantRole } from '../types/index.js';
@@ -36,18 +40,29 @@ export const SELECT = {
   carpoolNeedRide: (sid: string) => `carpool:need_ride_select:${sid}`,
 } as const;
 
-// ─── Embed builder ────────────────────────────────────────────────────────────
+// ─── Panel content (replaces embed) ──────────────────────────────────────────
 
-export function buildSessionEmbed(
+/** Builds the markdown text displayed in the panel info section. */
+function buildPanelContent(
   session: LunchSession,
   participants: Participant[],
   restaurants: Restaurant[],
-  carpools: Carpool[] = [],
-): EmbedBuilder {
+  carpools: Carpool[],
+): string {
   const isLocked = session.status === SessionStatus.Locked;
-  const title = isLocked ? '🔒 FINALIZED – MUNCH ASSEMBLE' : '🍔 MUNCH ASSEMBLE';
+  const title = isLocked ? '🔒 **FINALIZED – MUNCH ASSEMBLE**' : '🍔 **MUNCH ASSEMBLE**';
 
-  const statusColor = isLocked ? 0x57f287 : 0xfee75c; // green locked, yellow planning
+  // Restaurant leaderboard
+  const sorted = [...restaurants].sort((a, b) => b.votes.length - a.votes.length);
+  const restaurantLines = sorted.length
+    ? sorted
+        .map((r, i) => {
+          const isLocked = session.lockedRestaurantId === r.id;
+          const prefix = isLocked ? '🔒' : `${i + 1}.`;
+          return `${prefix} **${r.name}** — ${r.votes.length} vote${r.votes.length !== 1 ? 's' : ''}`;
+        })
+        .join('\n')
+    : '*No options added yet*';
 
   // Attendance groups
   const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
@@ -55,118 +70,65 @@ export function buildSessionEmbed(
   const outList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Out);
   const soloList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.DrivingAlone);
 
-  const nameList = (ps: Participant[]) =>
-    ps.length ? ps.map((p) => p.displayName).join(', ') : '*None yet*';
+  const nameStr = (ps: Participant[]) => ps.length ? ps.map((p) => p.displayName).join(', ') : '*None yet*';
 
-  // Restaurant leaderboard (sorted by vote count desc)
-  const sorted = [...restaurants].sort((a, b) => b.votes.length - a.votes.length);
-  const restaurantLines = sorted.length
-    ? sorted
-        .map((r, i) => {
-          const locked = session.lockedRestaurantId === r.id;
-          const prefix = locked ? '🔒' : `${i + 1}.`;
-          return `${prefix} **${r.name}** — ${r.votes.length} vote${r.votes.length !== 1 ? 's' : ''}`;
-        })
-        .join('\n')
-    : '*No options added yet*';
+  const attendanceLine = [
+    `✅ **In (${inList.length}):** ${nameStr(inList)}`,
+    `🤔 **Maybe (${maybeList.length}):** ${nameStr(maybeList)}`,
+    `❌ **Out:** ${outList.length || '*None*'}`,
+    soloList.length ? `🚘 **Driving Alone:** ${soloList.map((p) => p.displayName).join(', ')}` : null,
+  ].filter(Boolean).join('\n');
 
-  const embed = new EmbedBuilder()
-    .setTitle(`${title} – ${formatDate(session.date)}`)
-    .setColor(statusColor)
-    .addFields(
-      {
-        name: '📍 Restaurant (Voting)',
-        value: restaurantLines,
-        inline: false,
-      },
-      {
-        name: `✅ In (${inList.length})`,
-        value: nameList(inList),
-        inline: true,
-      },
-      {
-        name: `🤔 Maybe (${maybeList.length})`,
-        value: nameList(maybeList),
-        inline: true,
-      },
-      {
-        name: `❌ Out (${outList.length})`,
-        value: outList.length ? String(outList.length) : '*None*',
-        inline: true,
-      },
-      {
-        name: `🚘 Driving Alone (${soloList.length})`,
-        value: soloList.length ? soloList.map((p) => p.displayName).join(', ') : '*None*',
-        inline: true,
-      },
-      {
-        name: '⏰ Timing',
-        value: `**Lunch:** ${format12h(session.lunchTime)}  |  **Depart:** ${format12h(session.departTime)}`,
-        inline: false,
-      },
-    );
+  const lines: string[] = [
+    `${title} – ${formatDate(session.date)}`,
+    '',
+    `### 📍 Restaurant Voting`,
+    restaurantLines,
+    '',
+    `### 👥 Attendance`,
+    attendanceLine,
+    '',
+    `⏰ **Lunch:** ${format12h(session.lunchTime)}  |  **Depart:** ${format12h(session.departTime)}`,
+  ];
 
   if (session.notes) {
-    embed.addFields({ name: '📝 Notes', value: session.notes, inline: false });
+    lines.push(`📝 **Notes:** ${session.notes}`);
   }
 
-  // Carpool section (Phase 2)
   if (carpools.length > 0) {
-    const carpoolLines = carpools.map((c) => {
-      const driverParticipant = participants.find((p) => p.userId === c.driverId);
-      const driverName = driverParticipant?.displayName ?? `<@${c.driverId}>`;
-      const filled = c.riders.length;
-      const riderNames = c.riders
-        .map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`)
-        .join(', ');
-      return `🚗 **${driverName}** (${filled}/${c.seats} seats) @ ${c.musterPoint}${filled > 0 ? ` — ${riderNames}` : ''}`;
-    });
-    embed.addFields({
-      name: '🚗 Carpools',
-      value: carpoolLines.join('\n'),
-      inline: false,
-    });
+    lines.push('', '### 🚗 Carpools');
+    for (const c of carpools) {
+      const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? `<@${c.driverId}>`;
+      const riderNames = c.riders.map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`).join(', ');
+      lines.push(`🚗 **${driverName}** (${c.riders.length}/${c.seats} seats) @ ${c.musterPoint}${c.riders.length > 0 ? ` — ${riderNames}` : ''}`);
+    }
   }
 
-  // Muster points — exclude solo drivers (muster is irrelevant for them)
+  // Muster points — exclude solo drivers
   const withMuster = participants.filter(
     (p) => p.musterPoint && p.attendanceStatus !== AttendanceStatus.DrivingAlone,
   );
   if (withMuster.length > 0) {
-    // Group by muster point
     const grouped = withMuster.reduce<Record<string, string[]>>((acc, p) => {
-      const key = p.musterPoint!;
-      (acc[key] ??= []).push(p.displayName);
+      (acc[p.musterPoint!] ??= []).push(p.displayName);
       return acc;
     }, {});
-    const musterLines = Object.entries(grouped)
-      .map(([point, names]) => `📍 **${point}:** ${names.join(', ')}`)
-      .join('\n');
-    embed.addFields({ name: '📍 Muster Points', value: musterLines, inline: false });
+    lines.push('', '### 📍 Muster Points');
+    for (const [point, names] of Object.entries(grouped)) {
+      lines.push(`📍 **${point}:** ${names.join(', ')}`);
+    }
   }
 
-  embed.setFooter({
-    text: isLocked ? '🟢 Status: Finalized' : '🟡 Status: Planning',
-  });
+  lines.push('', isLocked ? '🟢 *Status: Finalized*' : '🟡 *Status: Planning*');
 
-  return embed;
+  return lines.join('\n');
 }
 
 // ─── Action rows ──────────────────────────────────────────────────────────────
 
-/** Disabled "header" label button — visual section divider. */
-function headerBtn(label: string): ButtonBuilder {
-  return new ButtonBuilder()
-    .setCustomId(`noop:${label}`)
-    .setLabel(label)
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(true);
-}
-
 /** Row 1 — Attendance */
 function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    headerBtn('— Attendance —'),
     new ButtonBuilder().setCustomId(BTN.in(sessionId)).setLabel("✅ I'm In").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(BTN.maybe(sessionId)).setLabel('🤔 Maybe').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(BTN.out(sessionId)).setLabel('❌ Out').setStyle(ButtonStyle.Danger),
@@ -176,17 +138,15 @@ function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> 
 /** Row 2 — Restaurant */
 function buildRestaurantRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    headerBtn('— Restaurant —'),
     new ButtonBuilder().setCustomId(BTN.vote(sessionId)).setLabel('🍔 Vote').setStyle(ButtonStyle.Primary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.addSpot(sessionId)).setLabel('➕ Add Spot').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.lockChoice(sessionId)).setLabel('🔒 Lock Choice').setStyle(ButtonStyle.Danger).setDisabled(locked),
   );
 }
 
-/** Row 3 — Transportation (Driving Alone lives here, not on attendance row) */
+/** Row 3 — Transportation */
 function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    headerBtn('— Transportation —'),
     new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel("🚗 I'm Driving").setStyle(ButtonStyle.Success).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.needRide(sessionId)).setLabel('🚌 Need Ride').setStyle(ButtonStyle.Primary).setDisabled(locked),
@@ -197,15 +157,13 @@ function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder
 /** Row 4 — Location */
 function buildLocationRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    headerBtn('— Location —'),
     new ButtonBuilder().setCustomId(BTN.muster(sessionId)).setLabel('📍 Set Muster Point').setStyle(ButtonStyle.Secondary).setDisabled(locked),
   );
 }
 
-/** Row 5 — Admin / Misc (Auto Assign moved here from transport row) */
+/** Row 5 — Admin */
 function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    headerBtn('— Admin —'),
     new ButtonBuilder().setCustomId(BTN.autoAssign(sessionId)).setLabel('🤖 Auto Assign').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.finalize(sessionId)).setLabel('🔒 Finalize Plan').setStyle(ButtonStyle.Danger).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.ping(sessionId)).setLabel('🔔 Ping Unanswered').setStyle(ButtonStyle.Secondary),
@@ -213,36 +171,65 @@ function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<But
   );
 }
 
-/** Minimal locked-state action rows (BR-004). */
-function buildLockedRows(_sessionId: string): ActionRowBuilder<ButtonBuilder>[] {
-  return [
-    new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId('noop')
-        .setLabel('👀 View above for details')
-        .setStyle(ButtonStyle.Secondary)
-        .setDisabled(true),
-    ),
-  ];
+// ─── Panel builder (Components v2) ───────────────────────────────────────────
+
+/** The payload shape to spread into any discord.js send/update/editReply call. */
+export interface PanelPayload {
+  flags: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  components: any[];
 }
 
 /**
- * Build all action rows for the session panel (max 5 — Discord limit).
- * Switches to minimal rows when session is finalized (BR-004).
+ * Builds the full Components v2 panel message payload.
+ * Returns { flags, components } — spread this directly into reply/update/editReply.
  */
-export function buildActionRows(
+export function buildPanel(
   session: LunchSession,
-): ActionRowBuilder<ButtonBuilder>[] {
-  const locked = session.status === SessionStatus.Locked;
-  if (locked) return buildLockedRows(session.id);
+  participants: Participant[],
+  restaurants: Restaurant[],
+  carpools: Carpool[] = [],
+): PanelPayload {
+  const isLocked = session.status === SessionStatus.Locked;
+  const accentColor = isLocked ? 0x57f287 : 0xfee75c;
+  const content = buildPanelContent(session, participants, restaurants, carpools);
 
-  return [
-    buildAttendanceRow(session.id),
-    buildRestaurantRow(session.id, !!session.lockedRestaurantId),
-    buildTransportRow(session.id, false),
-    buildLocationRow(session.id, false),
-    buildAdminRow(session.id, false),
-  ];
+  if (isLocked) {
+    // Finalized — info only, no interactive buttons
+    const container = new ContainerBuilder()
+      .setAccentColor(accentColor)
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));
+    return { flags: MessageFlags.IsComponentsV2, components: [container] };
+  }
+
+  const restaurantLocked = !!session.lockedRestaurantId;
+  const sep = () => new SeparatorBuilder().setDivider(false).setSpacing(SeparatorSpacingSize.Small);
+
+  const container = new ContainerBuilder()
+    .setAccentColor(accentColor)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(content))
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Large))
+    // ── Attendance ──
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Attendance ──**'))
+    .addActionRowComponents(buildAttendanceRow(session.id))
+    .addSeparatorComponents(sep())
+    // ── Restaurant ──
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Restaurant ──**'))
+    .addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked))
+    .addSeparatorComponents(sep())
+    // ── Transportation ──
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Transportation ──**'))
+    .addActionRowComponents(buildTransportRow(session.id, false))
+    .addSeparatorComponents(sep())
+    // ── Location ──
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Location ──**'))
+    .addActionRowComponents(buildLocationRow(session.id, false))
+    .addSeparatorComponents(sep())
+    // ── Admin ──
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Admin ──**'))
+    .addActionRowComponents(buildAdminRow(session.id, false));
+
+  return { flags: MessageFlags.IsComponentsV2, components: [container] };
 }
 
 /** Vote select menu — shown in a follow-up ephemeral message. */

@@ -12,7 +12,7 @@ import { startSession, getActiveSessionForGuild, attachMessageId } from '../serv
 import { addRestaurant } from '../services/restaurantService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { buildSessionEmbed, buildActionRows } from '../ui/panelBuilder.js';
+import { buildPanel } from '../ui/panelBuilder.js';
 import { scheduleReminders } from '../utils/scheduler.js';
 
 export const data = new SlashCommandBuilder()
@@ -140,10 +140,9 @@ export async function handleCreateSessionModal(
 
     const participants = await getParticipantsForSession(session.id);
     const carpools = await getCarpoolsForSession(session.id);
-    const embed = buildSessionEmbed(session, participants, restaurants, carpools);
-    const rows = buildActionRows(session);
+    const panel = buildPanel(session, participants, restaurants, carpools);
 
-    const message = await interaction.editReply({ embeds: [embed], components: rows });
+    const message = await interaction.editReply(panel as any);
 
     // Store the message ID so handlers can edit the panel later
     const attached = await attachMessageId(session, message.id);

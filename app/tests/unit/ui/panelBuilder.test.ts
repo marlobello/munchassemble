@@ -1,4 +1,5 @@
-import { buildSessionEmbed, buildActionRows, format12h, BTN } from '../../../src/ui/panelBuilder';
+import { MessageFlags } from 'discord.js';
+import { buildPanel, format12h, BTN } from '../../../src/ui/panelBuilder';
 import { LunchSession, Participant, Restaurant, SessionStatus, AttendanceStatus, ParticipantRole } from '../../../src/types';
 
 const mockSession: LunchSession = {
@@ -57,82 +58,92 @@ const mockRestaurants: Restaurant[] = [
   },
 ];
 
-describe('buildSessionEmbed', () => {
-  it('includes the session date in the title', () => {
-    const embed = buildSessionEmbed(mockSession, mockParticipants, mockRestaurants);
-    const data = embed.toJSON();
-    expect(data.title).toContain('MUNCH ASSEMBLE');
+describe('buildPanel (Components v2)', () => {
+  it('sets IsComponentsV2 flag', () => {
+    const { flags } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    expect(flags).toBe(MessageFlags.IsComponentsV2);
   });
 
-  it('shows correct attendance counts in field names', () => {
-    const embed = buildSessionEmbed(mockSession, mockParticipants, mockRestaurants);
-    const fields = embed.toJSON().fields ?? [];
-    const inField = fields.find((f) => f.name.startsWith('✅ In'));
-    const maybeField = fields.find((f) => f.name.startsWith('🤔 Maybe'));
-    expect(inField?.name).toBe('✅ In (1)');
-    expect(maybeField?.name).toBe('🤔 Maybe (1)');
+  it('returns a single Container component', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    expect(components).toHaveLength(1);
+    expect((components[0] as any).toJSON().type).toBe(17); // Container type
   });
 
-  it('lists restaurants sorted by vote count descending', () => {
-    const embed = buildSessionEmbed(mockSession, mockParticipants, mockRestaurants);
-    const fields = embed.toJSON().fields ?? [];
-    const restaurantField = fields.find((f) => f.name.includes('Restaurant'));
-    expect(restaurantField?.value).toMatch(/Chipotle.*Local Table/s);
+  it('panel content includes session title and date', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const containerJson = (components[0] as any).toJSON();
+    const textDisplay = containerJson.components[0]; // first child is TextDisplay
+    expect(textDisplay.type).toBe(10); // TextDisplay type
+    expect(textDisplay.content).toContain('MUNCH ASSEMBLE');
   });
 
-  it('shows "🔒 FINALIZED" title when session is locked', () => {
+  it('panel content shows correct attendance', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const containerJson = (components[0] as any).toJSON();
+    const textDisplay = containerJson.components[0];
+    expect(textDisplay.content).toContain('In (1)');
+    expect(textDisplay.content).toContain('Maybe (1)');
+    expect(textDisplay.content).toContain('Alice');
+    expect(textDisplay.content).toContain('Bob');
+  });
+
+  it('panel content lists restaurants sorted by votes descending', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const containerJson = (components[0] as any).toJSON();
+    const content: string = containerJson.components[0].content;
+    expect(content.indexOf('Chipotle')).toBeLessThan(content.indexOf('Local Table'));
+  });
+
+  it('finalized panel has green accent color and no action rows', () => {
     const lockedSession: LunchSession = { ...mockSession, status: SessionStatus.Locked };
-    const embed = buildSessionEmbed(lockedSession, mockParticipants, mockRestaurants);
-    expect(embed.toJSON().title).toContain('FINALIZED');
-  });
-});
-
-describe('buildActionRows', () => {
-  it('returns 5 rows for a planning session (attendance, restaurant, transport, location, admin)', () => {
-    const rows = buildActionRows(mockSession);
-    expect(rows).toHaveLength(5);
+    const { components } = buildPanel(lockedSession, mockParticipants, mockRestaurants);
+    const containerJson = (components[0] as any).toJSON();
+    expect(containerJson.accent_color).toBe(0x57f287);
+    // Only one child: the TextDisplay (no action rows when locked)
+    expect(containerJson.components).toHaveLength(1);
+    expect(containerJson.components[0].type).toBe(10);
   });
 
-  it('returns 1 row (disabled) for a locked session', () => {
-    const lockedSession: LunchSession = { ...mockSession, status: SessionStatus.Locked };
-    const rows = buildActionRows(lockedSession);
-    expect(rows).toHaveLength(1);
+  it('planning panel has yellow accent color', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const containerJson = (components[0] as any).toJSON();
+    expect(containerJson.accent_color).toBe(0xfee75c);
   });
 
-  it('generates correct customIds for attendance buttons', () => {
-    const rows = buildActionRows(mockSession);
-    const buttons = (rows[0].toJSON() as any).components;
-    // buttons[0] is the disabled header label
-    expect(buttons[1].custom_id).toBe(BTN.in('sess-1'));
-    expect(buttons[2].custom_id).toBe(BTN.maybe('sess-1'));
-    expect(buttons[3].custom_id).toBe(BTN.out('sess-1'));
+  // Validate action row custom IDs within the container
+  function getActionRows(components: any[]) {
+    const containerComponents = (components[0] as any).toJSON().components;
+    return containerComponents.filter((c: any) => c.type === 1); // ActionRow type = 1
+  }
+
+  it('attendance row has correct button customIds', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const rows = getActionRows(components);
+    const btns = rows[0].components;
+    expect(btns[0].custom_id).toBe(BTN.in('sess-1'));
+    expect(btns[1].custom_id).toBe(BTN.maybe('sess-1'));
+    expect(btns[2].custom_id).toBe(BTN.out('sess-1'));
   });
 
-  it('generates correct customIds for transport buttons on row 3', () => {
-    const rows = buildActionRows(mockSession);
-    const buttons = (rows[2].toJSON() as any).components;
-    // buttons[0] is the disabled header label
-    expect(buttons[1].custom_id).toBe(BTN.driving('sess-1'));
-    expect(buttons[2].custom_id).toBe(BTN.drivingAlone('sess-1'));
-    expect(buttons[3].custom_id).toBe(BTN.needRide('sess-1'));
-    expect(buttons[4].custom_id).toBe(BTN.carpoolSwitch('sess-1'));
+  it('transport row contains Driving Alone button', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const rows = getActionRows(components);
+    const transportBtns = rows[2].components; // row 0=attendance, 1=restaurant, 2=transport
+    const ids = transportBtns.map((b: any) => b.custom_id);
+    expect(ids).toContain(BTN.drivingAlone('sess-1'));
+    expect(ids).toContain(BTN.driving('sess-1'));
+    expect(ids).toContain(BTN.needRide('sess-1'));
   });
 
-  it('generates correct customId for muster button on row 4', () => {
-    const rows = buildActionRows(mockSession);
-    const buttons = (rows[3].toJSON() as any).components;
-    // buttons[0] is the disabled header label
-    expect(buttons[1].custom_id).toBe(BTN.muster('sess-1'));
-  });
-
-  it('generates correct customIds for admin buttons on row 5', () => {
-    const rows = buildActionRows(mockSession);
-    const buttons = (rows[4].toJSON() as any).components;
-    // buttons[0] is the disabled header label; autoAssign moved here from transport
-    expect(buttons[1].custom_id).toBe(BTN.autoAssign('sess-1'));
-    expect(buttons[2].custom_id).toBe(BTN.finalize('sess-1'));
-    expect(buttons[3].custom_id).toBe(BTN.ping('sess-1'));
-    expect(buttons[4].custom_id).toBe(BTN.editTime('sess-1'));
+  it('admin row has correct button customIds', () => {
+    const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    const rows = getActionRows(components);
+    const adminBtns = rows[4].components; // row 4 = admin
+    const ids = adminBtns.map((b: any) => b.custom_id);
+    expect(ids).toContain(BTN.finalize('sess-1'));
+    expect(ids).toContain(BTN.ping('sess-1'));
+    expect(ids).toContain(BTN.editTime('sess-1'));
   });
 });
 
