@@ -46,6 +46,23 @@
 - **BR-011 Roster Display:** The session panel shows attendee names grouped by status, updated on each interaction.
 - **BR-012 Ping Unanswered:** The session creator or admin can click "🔔 Ping Unanswered" to post a message mentioning all server members who have not yet RSVPed.
 
+### Attendance × Transport × Vote State Machine
+
+Decided 2026-03-30. Implemented in `src/utils/stateRules.ts`.
+
+| Attendance | Vote | Driving Alone | Can Drive (host) | Need Ride |
+|------------|------|---------------|-----------------|-----------|
+| **In** | ✅ | ✅ | ✅ | ✅ |
+| **Maybe** | ✅ | ✅ (stays Maybe) | ❌ Blocked | ✅ (stays Maybe) |
+| **Out** | ❌ Blocked | ❌ Blocked | ❌ Blocked | ❌ Blocked |
+| **Unset** | ✅ | ✅ → auto-promote In | ✅ → auto-promote In | ✅ → auto-promote In |
+
+**Cascade rules on attendance change:**
+
+- **→ Out**: clear ALL transport (cancel hosted carpool + unassign riders, remove from any joined carpool) **and remove restaurant vote**.
+- **→ Maybe**: cancel hosted carpool (CanDrive) only — DrivingAlone and NeedRide are preserved. Vote is preserved.
+- **→ In**: no cascade (user may re-vote and re-select transport as desired).
+
 ### Restaurant Voting
 
 - **BR-020 Add Restaurant:** Any user can click "➕ Add Spot" which opens a modal (Name field). The bot checks the favorites list and pre-populates a quick-select if matching names exist.

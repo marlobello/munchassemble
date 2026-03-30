@@ -24,6 +24,8 @@ import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { buildPanel, SELECT } from '../ui/panelBuilder.js';
 import { TransportStatus } from '../types/index.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
+import { transportBlockedReason, canHostCarpool } from '../utils/stateRules.js';
+import { getParticipant } from '../db/repositories/participantRepo.js';
 import type { Client } from 'discord.js';
 
 /**
@@ -43,13 +45,19 @@ export async function handleDrivingAloneButton(
 
   const member = interaction.member as import('discord.js').GuildMember;
 
-  // Fetch current state to determine toggle direction
-  const participants = await getParticipantsForSession(session.id);
-  const existing = participants.find((p) => p.userId === interaction.user.id);
-
-  // Toggle: if already DrivingAlone, clear it; otherwise set it
-  const isCurrentlyDrivingAlone = existing?.transportStatus === TransportStatus.DrivingAlone;
+  // Fetch current state to determine toggle direction and validate
+  const participant = await getParticipant(session.id, interaction.user.id);
+  const isCurrentlyDrivingAlone = participant?.transportStatus === TransportStatus.DrivingAlone;
   const newTransport = isCurrentlyDrivingAlone ? TransportStatus.None : TransportStatus.DrivingAlone;
+
+  // State machine: Out cannot set any transport (toggle OFF is always allowed)
+  if (newTransport !== TransportStatus.None) {
+    const blocked = transportBlockedReason(participant, newTransport);
+    if (blocked) {
+      await interaction.reply({ content: blocked, flags: MessageFlags.Ephemeral });
+      return;
+    }
+  }
 
   if (!isCurrentlyDrivingAlone) {
     // Clear any active CanDrive carpool or NeedRide assignment before switching to Driving Alone
@@ -77,6 +85,17 @@ export async function handleDrivingAloneButton(
 
 export async function handleDrivingButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
+
+  // State machine: only In (or unset) can host a carpool; block Out and Maybe
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (session && session.id === sessionId) {
+    const participant = await getParticipant(session.id, interaction.user.id);
+    if (!canHostCarpool(participant)) {
+      const blocked = transportBlockedReason(participant, TransportStatus.CanDrive);
+      await interaction.reply({ content: blocked ?? "❌ You cannot host a carpool right now.", flags: MessageFlags.Ephemeral });
+      return;
+    }
+  }
 
   const modal = new ModalBuilder()
     .setCustomId(`modal:driving:${sessionId}`)
@@ -152,6 +171,14 @@ export async function handleNeedRideButton(
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
     await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  // State machine: Out cannot request a ride
+  const participant = await getParticipant(session.id, interaction.user.id);
+  const blocked = transportBlockedReason(participant, TransportStatus.NeedRide);
+  if (blocked) {
+    await interaction.reply({ content: blocked, flags: MessageFlags.Ephemeral });
     return;
   }
 

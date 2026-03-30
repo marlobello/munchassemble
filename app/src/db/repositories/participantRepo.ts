@@ -84,9 +84,11 @@ export async function updateAttendanceStatus(
 
 /**
  * Update a participant's transport status.
- * Setting any non-None transport status on a user who is Out/Maybe/unset
- * auto-promotes their attendance to In (can't drive or ride if not going).
- * Setting None clears transport and leaves attendance unchanged.
+ * Enforces state machine rules:
+ *   - Out cannot set any transport (throws).
+ *   - Maybe cannot set CanDrive (throws).
+ *   - Maybe CAN set DrivingAlone or NeedRide (attendance stays Maybe — no auto-promote).
+ *   - Unset (no record): auto-promotes to In.
  */
 export async function updateTransportStatus(
   sessionId: string,
@@ -98,19 +100,27 @@ export async function updateTransportStatus(
   const existing = await getParticipant(sessionId, userId);
   const now = new Date().toISOString();
 
-  const requiresIn = transport !== TransportStatus.None;
-  const currentAttendance = existing?.attendanceStatus;
-  const shouldPromoteToIn =
-    requiresIn &&
-    (!currentAttendance ||
-      currentAttendance === AttendanceStatus.Out ||
-      currentAttendance === AttendanceStatus.Maybe);
+  // State machine enforcement
+  if (transport !== TransportStatus.None && existing) {
+    if (existing.attendanceStatus === AttendanceStatus.Out) {
+      throw new Error("You need to be **In** to set a transport status.");
+    }
+    if (
+      existing.attendanceStatus === AttendanceStatus.Maybe &&
+      transport === TransportStatus.CanDrive
+    ) {
+      throw new Error("You need to confirm you're **In** before hosting a carpool.");
+    }
+  }
+
+  // Auto-promote only for brand-new (unset) records
+  const isNew = !existing;
+  const shouldPromoteToIn = isNew && transport !== TransportStatus.None;
 
   const participant: Participant = existing
     ? {
         ...existing,
         transportStatus: transport,
-        attendanceStatus: shouldPromoteToIn ? AttendanceStatus.In : existing.attendanceStatus,
         // Clear assignedDriverId when no longer NeedRide
         assignedDriverId:
           transport === TransportStatus.NeedRide ? existing.assignedDriverId : undefined,
@@ -122,7 +132,7 @@ export async function updateTransportStatus(
         userId,
         username,
         displayName,
-        attendanceStatus: requiresIn ? AttendanceStatus.In : AttendanceStatus.Out,
+        attendanceStatus: shouldPromoteToIn ? AttendanceStatus.In : AttendanceStatus.Out,
         transportStatus: transport,
         updatedAt: now,
       };

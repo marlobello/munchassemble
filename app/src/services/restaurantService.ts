@@ -5,6 +5,7 @@ import {
   getRestaurantsForSession,
   getRestaurantById,
   castVote,
+  removeVoteFromAll,
 } from '../db/repositories/restaurantRepo.js';
 import { recordUsage } from '../db/repositories/favoriteRepo.js';
 
@@ -46,3 +47,11 @@ export async function voteForRestaurant(
 }
 
 export { getRestaurantsForSession, getRestaurantById };
+
+/**
+ * Removes the user's vote from any restaurant in this session.
+ * Called when attendance changes to Out (BR cascade rule).
+ */
+export async function removeVote(sessionId: string, userId: string): Promise<void> {
+  return removeVoteFromAll(sessionId, userId);
+}

@@ -2,15 +2,19 @@ import type { ButtonInteraction, GuildMember } from 'discord.js';
 import { MessageFlags } from 'discord.js';
 import { AttendanceStatus } from '../types/index.js';
 import { rsvp, getParticipantsForSession } from '../services/participantService.js';
-import { clearCarpoolRole, getCarpoolsForSession } from '../services/carpoolService.js';
-import { getRestaurantsForSession } from '../services/restaurantService.js';
+import { clearCarpoolRole, clearCanDriveRoleOnly, getCarpoolsForSession } from '../services/carpoolService.js';
+import { removeVote, getRestaurantsForSession } from '../services/restaurantService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
 
 /**
  * Handles the three attendance buttons: ✅ In / 🤔 Maybe / ❌ Out (BR-010).
  * customId format: rsvp:<status>:<sessionId>
- * Note: Driving Alone is transport, not attendance — it routes through carpoolHandler.
+ *
+ * Cascade rules on attendance change:
+ *   → Out:   clear ALL transport (cancel any CanDrive carpool, remove from NeedRide) + remove vote
+ *   → Maybe: clear CanDrive ONLY (cancel hosted carpool + unassign riders); keep DrivingAlone/NeedRide; keep vote
+ *   → In:    no cascade
  */
 export async function handleAttendanceButton(interaction: ButtonInteraction): Promise<void> {
   const [, statusStr, sessionId] = interaction.customId.split(':');
@@ -27,11 +31,18 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
 
   const member = interaction.member as GuildMember;
 
-  // Out or Maybe → clean up any active carpool role before changing attendance.
-  // This cancels carpools, unassigns riders, and removes from driver's rider list.
-  if (status !== AttendanceStatus.In) {
-    await clearCarpoolRole(session.id, interaction.user.id);
+  // Cascade effects based on new attendance status
+  if (status === AttendanceStatus.Out) {
+    // Out: clear ALL transport (cancel CanDrive carpool, remove from any carpool) + remove vote
+    await Promise.all([
+      clearCarpoolRole(session.id, interaction.user.id),
+      removeVote(session.id, interaction.user.id),
+    ]);
+  } else if (status === AttendanceStatus.Maybe) {
+    // Maybe: only cancel hosted carpool (CanDrive); DrivingAlone/NeedRide are permitted with Maybe
+    await clearCanDriveRoleOnly(session.id, interaction.user.id);
   }
+  // In: no cascade — user can freely choose transport and vote
 
   await rsvp(
     session.id,

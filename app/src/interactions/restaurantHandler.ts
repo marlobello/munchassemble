@@ -24,6 +24,7 @@ import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel, buildVoteSelectMenu } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
+import { voteBlockedReason } from '../utils/stateRules.js';
 import type { Client } from 'discord.js';
 
 /** [🍔 Vote] button — shows a select menu of current restaurants (BR-021). */
@@ -32,6 +33,15 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
     await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  // State machine: Out users cannot vote
+  const { getParticipant } = await import('../db/repositories/participantRepo.js');
+  const participant = await getParticipant(session.id, interaction.user.id);
+  const blocked = voteBlockedReason(participant);
+  if (blocked) {
+    await interaction.reply({ content: blocked, flags: MessageFlags.Ephemeral });
     return;
   }
 

@@ -11,10 +11,12 @@ import {
   upsertParticipant,
   getParticipantsForSession,
 } from '../db/repositories/participantRepo.js';
+import { canHostCarpool, canRequestTransport } from '../utils/stateRules.js';
 
 /**
  * Register the user as a driver for the session.
- * Sets transportStatus=CanDrive and auto-promotes attendance to In.
+ * Requires attendanceStatus === In (or no record — new record auto-promotes to In).
+ * Throws if the user is Out or Maybe.
  */
 export async function registerDriver(
   sessionId: string,
@@ -24,8 +26,16 @@ export async function registerDriver(
 ): Promise<Carpool> {
   const now = new Date().toISOString();
 
-  // If user was previously a rider in someone else's carpool, remove them from it
+  // Validate state: only In (or unset) can host a carpool
   const p = await getParticipant(sessionId, driverId);
+  if (!canHostCarpool(p)) {
+    if (p?.attendanceStatus === AttendanceStatus.Maybe) {
+      throw new Error("You need to confirm you're **In** before hosting a carpool.");
+    }
+    throw new Error("You need to be **In** to host a carpool.");
+  }
+
+  // If user was previously a rider in someone else's carpool, remove them from it
   if (p?.assignedDriverId) {
     const prevCarpool = await getCarpoolByDriver(sessionId, p.assignedDriverId);
     if (prevCarpool) {
@@ -47,16 +57,13 @@ export async function registerDriver(
   };
   await upsertCarpool(carpool);
 
-  // Update participant transport status
-  const needsIn =
-    !p?.attendanceStatus ||
-    p.attendanceStatus === AttendanceStatus.Out ||
-    p.attendanceStatus === AttendanceStatus.Maybe;
+  // Update participant transport status — no auto-promote; attendance stays as-is for existing In participants
+  const autoPromote = !p?.attendanceStatus;
   if (p) {
     await upsertParticipant({
       ...p,
       transportStatus: TransportStatus.CanDrive,
-      attendanceStatus: needsIn ? AttendanceStatus.In : p.attendanceStatus,
+      attendanceStatus: autoPromote ? AttendanceStatus.In : p.attendanceStatus,
       assignedDriverId: undefined,
       updatedAt: now,
     });
@@ -99,7 +106,8 @@ export async function unregisterDriver(sessionId: string, driverId: string): Pro
 
 /**
  * Mark the user as needing a ride.
- * Sets transportStatus=NeedRide and auto-promotes attendance to In.
+ * Requires attendanceStatus !== Out. Maybe is allowed (attendance stays Maybe).
+ * Auto-promotes to In only for brand-new (unset) participants.
  */
 export async function requestRide(
   sessionId: string,
@@ -110,22 +118,25 @@ export async function requestRide(
   const now = new Date().toISOString();
   const existing = await getParticipant(sessionId, userId);
 
+  // Validate: Out users cannot request a ride
+  if (!canRequestTransport(existing)) {
+    throw new Error("You need to be **In** (or **Maybe**) to request a ride.");
+  }
+
   // If previously a driver, unregister them first
   const prevCarpoolAsDriver = await getCarpoolByDriver(sessionId, userId);
   if (prevCarpoolAsDriver) {
     await unregisterDriver(sessionId, userId);
   }
 
-  const needsIn =
-    !existing?.attendanceStatus ||
-    existing.attendanceStatus === AttendanceStatus.Out ||
-    existing.attendanceStatus === AttendanceStatus.Maybe;
+  // Auto-promote only if no attendance record yet; Maybe stays Maybe
+  const autoPromote = !existing?.attendanceStatus;
 
   const participant: Participant = existing
     ? {
         ...existing,
         transportStatus: TransportStatus.NeedRide,
-        attendanceStatus: needsIn ? AttendanceStatus.In : existing.attendanceStatus,
+        attendanceStatus: autoPromote ? AttendanceStatus.In : existing.attendanceStatus,
         assignedDriverId: undefined,
         updatedAt: now,
       }
@@ -157,6 +168,19 @@ export async function clearCarpoolRole(sessionId: string, userId: string): Promi
       updatedAt: new Date().toISOString(),
     });
   }
+}
+
+/**
+ * Clear ONLY a CanDrive role, leaving DrivingAlone and NeedRide intact.
+ * Used when attendance changes to Maybe: CanDrive is prohibited but other transport is allowed.
+ */
+export async function clearCanDriveRoleOnly(sessionId: string, userId: string): Promise<void> {
+  const p = await getParticipant(sessionId, userId);
+  if (!p) return;
+  if (p.transportStatus === TransportStatus.CanDrive) {
+    await unregisterDriver(sessionId, userId);
+  }
+  // DrivingAlone and NeedRide are intentionally preserved
 }
 
 /**
@@ -218,6 +242,12 @@ export async function assignRiderToDriver(
   const available = carpool.seats - carpool.riders.length;
   if (available <= 0) throw new Error('No seats available with that driver.');
 
+  // Validate: Out users cannot join a carpool
+  const existing = await getParticipant(sessionId, riderId);
+  if (!canRequestTransport(existing)) {
+    throw new Error("You need to be **In** (or **Maybe**) to join a carpool.");
+  }
+
   // If the rider was previously a driver, unregister them
   const prevCarpoolAsDriver = await getCarpoolByDriver(sessionId, riderId);
   if (prevCarpoolAsDriver) {
@@ -225,7 +255,6 @@ export async function assignRiderToDriver(
   }
 
   // Remove rider from any previous driver's carpool
-  const existing = await getParticipant(sessionId, riderId);
   if (existing?.assignedDriverId && existing.assignedDriverId !== driverId) {
     const prevCarpool = await getCarpoolByDriver(sessionId, existing.assignedDriverId);
     if (prevCarpool) {
@@ -243,15 +272,13 @@ export async function assignRiderToDriver(
   }
 
   const now = new Date().toISOString();
+  // Auto-promote only for fully unset; Maybe attendance stays Maybe
+  const autoPromote = !existing?.attendanceStatus;
   const participant: Participant = existing
     ? {
         ...existing,
         transportStatus: TransportStatus.NeedRide,
-        attendanceStatus:
-          existing.attendanceStatus === AttendanceStatus.Out ||
-          existing.attendanceStatus === AttendanceStatus.Maybe
-            ? AttendanceStatus.In
-            : existing.attendanceStatus,
+        attendanceStatus: autoPromote ? AttendanceStatus.In : existing.attendanceStatus,
         assignedDriverId: driverId,
         updatedAt: now,
       }
