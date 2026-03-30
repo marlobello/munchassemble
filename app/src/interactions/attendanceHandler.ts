@@ -1,7 +1,7 @@
 import type { ButtonInteraction, GuildMember } from 'discord.js';
 import { MessageFlags } from 'discord.js';
 import { AttendanceStatus } from '../types/index.js';
-import { rsvp, getParticipantsForSession } from '../services/participantService.js';
+import { rsvp, toggleDrivingAlone, getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
@@ -25,13 +25,23 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
   }
 
   const member = interaction.member as GuildMember;
-  await rsvp(
-    session.id,
-    interaction.user.id,
-    interaction.user.username,
-    member?.displayName ?? interaction.user.username,
-    status,
-  );
+  if (status === AttendanceStatus.DrivingAlone) {
+    // Driving Alone is a transport choice — toggle it independently of attendance
+    await toggleDrivingAlone(
+      session.id,
+      interaction.user.id,
+      interaction.user.username,
+      member?.displayName ?? interaction.user.username,
+    );
+  } else {
+    await rsvp(
+      session.id,
+      interaction.user.id,
+      interaction.user.username,
+      member?.displayName ?? interaction.user.username,
+      status,
+    );
+  }
 
   const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),

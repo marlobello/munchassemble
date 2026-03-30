@@ -56,6 +56,8 @@ export interface Participant {
   displayName: string;
   attendanceStatus: AttendanceStatus;
   role: ParticipantRole;
+  /** True when the user is driving to lunch independently (no carpool). */
+  drivingAlone?: boolean;
   /** userId of assigned driver (when role === Rider, BR-031). */
   assignedDriverId?: string;
   /** Name of selected muster point (BR-040). */

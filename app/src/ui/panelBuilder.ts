@@ -63,9 +63,18 @@ function buildPanelContent(
   if (session.notes) lines.push(`📝 **Notes:** ${session.notes}`);
 
   // ── 3. Attendance ──────────────────────────────────────────────────────────
-  const inList    = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
+  // DrivingAlone is now a transport flag — legacy records with attendanceStatus='driving_alone' count as In
+  const inList    = participants.filter((p) =>
+    p.attendanceStatus === AttendanceStatus.In ||
+    p.attendanceStatus === AttendanceStatus.DrivingAlone,
+  );
   const maybeList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Maybe);
   const outList   = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Out);
+
+  // ── 5-pre. Solo drivers — use new drivingAlone flag, fall back to legacy status
+  const soloListFull = participants.filter(
+    (p) => p.drivingAlone === true || p.attendanceStatus === AttendanceStatus.DrivingAlone,
+  );
 
   const nameStr = (ps: Participant[]) =>
     ps.length ? ps.map((p) => p.displayName).join(', ') : '*None yet*';
@@ -91,17 +100,16 @@ function buildPanelContent(
   lines.push('', '### 📍 Restaurant Voting', restaurantLines);
 
   // ── 5. Transportation ──────────────────────────────────────────────────────
-  const soloList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.DrivingAlone);
   const unassignedRiders = participants.filter(
     (p) => p.role === ParticipantRole.Rider && !p.assignedDriverId,
   );
 
-  const hasTransport = soloList.length > 0 || carpools.length > 0 || unassignedRiders.length > 0;
+  const hasTransport = soloListFull.length > 0 || carpools.length > 0 || unassignedRiders.length > 0;
   if (hasTransport) {
     lines.push('', '### 🚗 Transportation');
 
-    if (soloList.length > 0) {
-      lines.push(`🚘 **Driving Alone:** ${soloList.map((p) => p.displayName).join(', ')}`);
+    if (soloListFull.length > 0) {
+      lines.push(`🚘 **Driving Alone:** ${soloListFull.map((p) => p.displayName).join(', ')}`);
     }
 
     for (const c of carpools) {

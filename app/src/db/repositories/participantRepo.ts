@@ -56,7 +56,9 @@ export async function updateAttendanceStatus(
     ? {
         ...existing,
         attendanceStatus: status,
-        // Driving alone means no muster point needed — clear it
+        // Clear drivingAlone when marking Out
+        drivingAlone: status === AttendanceStatus.Out ? undefined : existing.drivingAlone,
+        // DrivingAlone (legacy) — clear musterPoint
         musterPoint: status === AttendanceStatus.DrivingAlone ? undefined : existing.musterPoint,
         updatedAt: now,
       }
@@ -68,6 +70,43 @@ export async function updateAttendanceStatus(
         displayName,
         attendanceStatus: status,
         role: 'none' as Participant['role'],
+        updatedAt: now,
+      };
+  return upsertParticipant(participant);
+}
+
+/** Toggle the drivingAlone flag independently of attendance status.
+ *  Enabling ensures the participant is marked In (not Out). */
+export async function updateDrivingAlone(
+  sessionId: string,
+  userId: string,
+  username: string,
+  displayName: string,
+): Promise<Participant> {
+  const existing = await getParticipant(sessionId, userId);
+  const now = new Date().toISOString();
+  const enabling = !existing?.drivingAlone;
+
+  const participant: Participant = existing
+    ? {
+        ...existing,
+        drivingAlone: enabling ? true : undefined,
+        // If enabling and currently Out (or unset), flip to In
+        attendanceStatus:
+          enabling && (!existing.attendanceStatus || existing.attendanceStatus === AttendanceStatus.Out)
+            ? AttendanceStatus.In
+            : existing.attendanceStatus,
+        updatedAt: now,
+      }
+    : {
+        id: `${sessionId}::${userId}`,
+        sessionId,
+        userId,
+        username,
+        displayName,
+        attendanceStatus: AttendanceStatus.In,
+        role: 'none' as Participant['role'],
+        drivingAlone: true,
         updatedAt: now,
       };
   return upsertParticipant(participant);
