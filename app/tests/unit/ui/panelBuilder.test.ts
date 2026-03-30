@@ -39,7 +39,7 @@ const mockParticipants: Participant[] = [
 
 const mockRestaurants: Restaurant[] = [
   {
-    id: 'sess-1::r-1',
+    id: 'r-1',
     sessionId: 'sess-1',
     name: 'Chipotle',
     addedBy: 'user-1',
@@ -47,7 +47,7 @@ const mockRestaurants: Restaurant[] = [
     createdAt: new Date().toISOString(),
   },
   {
-    id: 'sess-1::r-2',
+    id: 'r-2',
     sessionId: 'sess-1',
     name: 'Local Table',
     addedBy: 'user-2',

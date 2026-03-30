@@ -27,7 +27,7 @@ export async function addRestaurant(
 
   const now = new Date().toISOString();
   const restaurant: Restaurant = {
-    id: `${sessionId}::${randomUUID()}`,
+    id: randomUUID(),
     sessionId,
     name: trimmed,
     addedBy,
