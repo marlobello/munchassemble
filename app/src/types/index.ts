@@ -10,8 +10,6 @@ export enum AttendanceStatus {
   In = 'in',
   Maybe = 'maybe',
   Out = 'out',
-  /** @deprecated Legacy DB value — no longer written; read only for migration. */
-  DrivingAlone = 'driving_alone',
 }
 
 /**
@@ -24,13 +22,6 @@ export enum TransportStatus {
   DrivingAlone = 'driving_alone',
   CanDrive = 'can_drive',
   NeedRide = 'need_ride',
-}
-
-/** @deprecated Legacy field — use TransportStatus instead. */
-export enum ParticipantRole {
-  Driver = 'driver',
-  Rider = 'rider',
-  None = 'none',
 }
 
 // ─── Core data types ──────────────────────────────────────────────────────────
@@ -73,12 +64,6 @@ export interface Participant {
   transportStatus?: TransportStatus;
   /** userId of assigned driver (when transportStatus === NeedRide, BR-031). */
   assignedDriverId?: string;
-  /** @deprecated Legacy field — use transportStatus instead. */
-  role?: ParticipantRole;
-  /** @deprecated Legacy field — use transportStatus === DrivingAlone instead. */
-  drivingAlone?: boolean;
-  /** @deprecated Legacy field. */
-  musterPoint?: string;
   updatedAt: string;
 }
 

@@ -1,12 +1,11 @@
 import cron from 'node-cron';
 import type { Client, TextBasedChannel } from 'discord.js';
 import type { LunchSession } from '../types/index.js';
+import { AttendanceStatus, TransportStatus } from '../types/index.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { getMusterPoints } from '../services/musterService.js';
 import { format12h } from '../ui/panelBuilder.js';
-import { ParticipantRole } from '../types/index.js';
 
 // Map from sessionId to scheduled tasks
 const _jobs = new Map<string, cron.ScheduledTask[]>();
@@ -87,19 +86,18 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
   const channel = rawChannel as TextBasedChannel;
   if (!('send' in channel)) return;
 
-  const [participants, restaurants, carpools, musterPoints] = await Promise.all([
+  const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
-    getMusterPoints(session.guildId),
   ]);
 
   const restaurant = session.lockedRestaurantId
     ? restaurants.find((r) => r.id === session.lockedRestaurantId)
     : restaurants.sort((a, b) => b.votes.length - a.votes.length)[0];
 
-  const inList = participants.filter((p) => p.attendanceStatus === 'in');
-  const drivers = participants.filter((p) => p.role === ParticipantRole.Driver);
+  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
+  const drivers = participants.filter((p) => p.transportStatus === TransportStatus.CanDrive);
 
   let msg = `⏰ **T-15 Reminder — Munch Assemble!**\n`;
   msg += `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}\n`;
@@ -116,10 +114,6 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
         msg += `  • <@${driver.userId}> from **${carpool.musterPoint}** — ${riderMentions}\n`;
       }
     }
-  }
-
-  if (musterPoints.length > 0) {
-    msg += `\n📍 **Muster Points:** ${musterPoints.map((mp) => mp.name).join(', ')}`;
   }
 
   await channel.send(msg);
@@ -141,9 +135,9 @@ async function sendT5Reminder(session: LunchSession, client: Client): Promise<vo
     ? restaurants.find((r) => r.id === session.lockedRestaurantId)
     : restaurants.sort((a, b) => b.votes.length - a.votes.length)[0];
 
-  const inList = participants.filter((p) => p.attendanceStatus === 'in');
+  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
   const riders = participants.filter(
-    (p) => p.role === ParticipantRole.Rider && !p.assignedDriverId,
+    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
   );
 
   let msg = `🚨 **FINAL CALL — 5 minutes to departure!**\n`;

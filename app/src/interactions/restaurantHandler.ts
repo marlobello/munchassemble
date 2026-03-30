@@ -11,7 +11,6 @@ import {
   MessageFlags,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
-  Routes,
 } from 'discord.js';
 import { getActiveSessionForGuild, lockRestaurant } from '../services/sessionService.js';
 import {
@@ -24,6 +23,8 @@ import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel, buildVoteSelectMenu } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
+import { refreshPanelMessage } from '../utils/panelRefresh.js';
+import type { Client } from 'discord.js';
 
 /** [🍔 Vote] button — shows a select menu of current restaurants (BR-021). */
 export async function handleVoteButton(interaction: ButtonInteraction): Promise<void> {
@@ -54,6 +55,7 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
 /** Vote select menu submission (BR-021). */
 export async function handleVoteSelect(
   interaction: StringSelectMenuInteraction,
+  client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const restaurantId = interaction.values[0];
@@ -66,15 +68,10 @@ export async function handleVoteSelect(
 
   await voteForRestaurant(session.id, restaurantId, interaction.user.id);
 
-  const [participants, restaurants] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-  ]);
-
   // Dismiss the ephemeral vote picker and refresh the main panel
   await interaction.deferUpdate();
   try { await interaction.deleteReply(); } catch { /* ephemeral already gone */ }
-  await refreshPanel(interaction, session, participants, restaurants);
+  await refreshPanelMessage(session, client);
 }
 /** [➕ Add Spot] button — shows favorites not already in session + free-text option (BR-020/BR-024). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
@@ -128,6 +125,7 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
 /** Select menu from the favorites quick-pick (BR-024). */
 export async function handleAddSpotSelect(
   interaction: StringSelectMenuInteraction,
+  client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const value = interaction.values[0];
@@ -158,7 +156,7 @@ export async function handleAddSpotSelect(
   // Dismiss the ephemeral picker and refresh the main panel
   await interaction.deferUpdate();
   try { await interaction.deleteReply(); } catch { /* already gone */ }
-  await refreshPanelFromInteraction(interaction, session);
+  await refreshPanelMessage(session, client);
 }
 
 /** Modal for free-text restaurant entry. */
@@ -180,7 +178,10 @@ async function showAddSpotModal(
 }
 
 /** Handle the Add Spot modal submission (BR-020). */
-export async function handleAddSpotModal(interaction: ModalSubmitInteraction): Promise<void> {
+export async function handleAddSpotModal(
+  interaction: ModalSubmitInteraction,
+  client: Client,
+): Promise<void> {
   const sessionId = interaction.customId.split(':')[2];
   const name = interaction.fields.getTextInputValue('name').trim();
 
@@ -201,7 +202,7 @@ export async function handleAddSpotModal(interaction: ModalSubmitInteraction): P
     throw err;
   }
   await interaction.reply({ content: `✅ **${name}** added to the vote!`, flags: MessageFlags.Ephemeral });
-  await refreshPanelFromInteraction(interaction, session);
+  await refreshPanelMessage(session, client);
 }
 
 /** [🔒 Lock Choice] button — locks the leading restaurant (BR-023). */
@@ -242,33 +243,3 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-async function refreshPanel(
-  interaction: StringSelectMenuInteraction,
-  session: import('../types/index.js').LunchSession,
-  participants: import('../types/index.js').Participant[],
-  restaurants: import('../types/index.js').Restaurant[],
-): Promise<void> {
-  if (!session.messageId) return;
-  try {
-    const carpools = await getCarpoolsForSession(session.id);
-    const panel = buildPanel(session, participants, restaurants, carpools);
-    await interaction.client.rest.patch(
-      Routes.channelMessage(session.channelId, session.messageId),
-      { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
-    );
-  } catch (err) {
-    console.error('[panel] Failed to refresh panel after vote:', err);
-  }
-}
-
-async function refreshPanelFromInteraction(
-  interaction: ModalSubmitInteraction | StringSelectMenuInteraction,
-  session: import('../types/index.js').LunchSession,
-): Promise<void> {
-  const [participants, restaurants] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-  ]);
-  await refreshPanel(interaction as StringSelectMenuInteraction, session, participants, restaurants);
-}

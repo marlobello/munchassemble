@@ -1,11 +1,13 @@
 import type { ButtonInteraction, GuildMember, ModalSubmitInteraction } from 'discord.js';
-import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, Routes } from 'discord.js';
+import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '../services/sessionService.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
+import { refreshPanelMessage } from '../utils/panelRefresh.js';
+import { AttendanceStatus } from '../types/index.js';
 
 /** [🔒 Finalize Plan] button — locks the session (BR-004). Creator/admin only. */
 export async function handleFinalizeButton(interaction: ButtonInteraction): Promise<void> {
@@ -35,7 +37,7 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
   await interaction.update(panel as any);
 
   // Post a summary message to the channel
-  const inList = participants.filter((p) => p.attendanceStatus === 'in');
+  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
   const restaurant = restaurants.find((r) => r.id === updatedSession.lockedRestaurantId);
   const summary =
     `🔒 **Plan finalized!**\n` +
@@ -164,24 +166,7 @@ export async function handleEditTimeModal(
     const { scheduleReminders } = await import('../utils/scheduler.js');
     scheduleReminders(updated, client);
 
-    const [participants, restaurants, carpools] = await Promise.all([
-      getParticipantsForSession(session.id),
-      getRestaurantsForSession(session.id),
-      getCarpoolsForSession(session.id),
-    ]);
-
-    const panel = buildPanel(updated, participants, restaurants, carpools);
-
-    if (session.messageId) {
-      try {
-        await interaction.client.rest.patch(
-          Routes.channelMessage(session.channelId, session.messageId),
-          { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
-        );
-      } catch (err) {
-        console.error('[panel] Failed to refresh panel after time edit:', err);
-      }
-    }
+    await refreshPanelMessage(updated, client);
 
     await interaction.editReply({
       content: `✅ Times updated — Lunch: **${lunchTime}**, Depart: **${departTime}**.`,

@@ -47,7 +47,6 @@ export async function registerDriver(
       transportStatus: TransportStatus.CanDrive,
       attendanceStatus: needsIn ? AttendanceStatus.In : p.attendanceStatus,
       assignedDriverId: undefined,
-      drivingAlone: undefined,
       updatedAt: now,
     });
   }
@@ -117,7 +116,6 @@ export async function requestRide(
         transportStatus: TransportStatus.NeedRide,
         attendanceStatus: needsIn ? AttendanceStatus.In : existing.attendanceStatus,
         assignedDriverId: undefined,
-        drivingAlone: undefined,
         updatedAt: now,
       }
     : {
@@ -145,7 +143,6 @@ export async function clearCarpoolRole(sessionId: string, userId: string): Promi
       ...p,
       transportStatus: TransportStatus.None,
       assignedDriverId: undefined,
-      drivingAlone: undefined,
       updatedAt: new Date().toISOString(),
     });
   }
@@ -159,12 +156,9 @@ export async function autoAssignRides(sessionId: string): Promise<Carpool[]> {
   const carpools = await getCarpoolsForSession(sessionId);
   const participants = await getParticipantsForSession(sessionId);
 
-  // Unassigned NeedRide participants (including legacy role=rider records)
+  // Unassigned NeedRide participants
   const riders = participants.filter(
-    (p) =>
-      (p.transportStatus === TransportStatus.NeedRide ||
-        p.role === 'rider') &&
-      !p.assignedDriverId,
+    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
   );
 
   const now = new Date().toISOString();
@@ -246,7 +240,6 @@ export async function assignRiderToDriver(
             ? AttendanceStatus.In
             : existing.attendanceStatus,
         assignedDriverId: driverId,
-        drivingAlone: undefined,
         updatedAt: now,
       }
     : {

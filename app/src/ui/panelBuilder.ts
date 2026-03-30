@@ -63,11 +63,7 @@ function buildPanelContent(
   if (session.notes) lines.push(`📝 **Notes:** ${session.notes}`);
 
   // ── 3. Attendance ──────────────────────────────────────────────────────────
-  // Legacy records with attendanceStatus='driving_alone' count as In
-  const inList    = participants.filter((p) =>
-    p.attendanceStatus === AttendanceStatus.In ||
-    p.attendanceStatus === AttendanceStatus.DrivingAlone,
-  );
+  const inList    = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
   const maybeList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Maybe);
   const outList   = participants.filter((p) => p.attendanceStatus === AttendanceStatus.Out);
 
@@ -95,19 +91,12 @@ function buildPanelContent(
   lines.push('', '### 📍 Restaurant Voting', restaurantLines);
 
   // ── 5. Transportation ──────────────────────────────────────────────────────
-  // Solo drivers: new transportStatus or legacy drivingAlone/attendanceStatus fields
   const soloList = participants.filter(
-    (p) =>
-      p.transportStatus === TransportStatus.DrivingAlone ||
-      p.drivingAlone === true ||
-      p.attendanceStatus === AttendanceStatus.DrivingAlone,
+    (p) => p.transportStatus === TransportStatus.DrivingAlone,
   );
 
-  // Unassigned riders: new transportStatus or legacy role field
   const unassignedRiders = participants.filter(
-    (p) =>
-      (p.transportStatus === TransportStatus.NeedRide || p.role === 'rider') &&
-      !p.assignedDriverId,
+    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
   );
 
   const hasTransport = soloList.length > 0 || carpools.length > 0 || unassignedRiders.length > 0;

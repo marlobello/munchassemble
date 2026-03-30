@@ -66,8 +66,6 @@ export async function updateAttendanceStatus(
         ...existing,
         attendanceStatus: status,
         transportStatus: clearTransport ? TransportStatus.None : existing.transportStatus,
-        // Clear legacy fields too
-        drivingAlone: clearTransport ? undefined : existing.drivingAlone,
         assignedDriverId: clearTransport ? undefined : existing.assignedDriverId,
         updatedAt: now,
       }
@@ -106,9 +104,7 @@ export async function updateTransportStatus(
     requiresIn &&
     (!currentAttendance ||
       currentAttendance === AttendanceStatus.Out ||
-      currentAttendance === AttendanceStatus.Maybe ||
-      // Legacy: old driving_alone records
-      currentAttendance === AttendanceStatus.DrivingAlone);
+      currentAttendance === AttendanceStatus.Maybe);
 
   const participant: Participant = existing
     ? {
@@ -118,8 +114,6 @@ export async function updateTransportStatus(
         // Clear assignedDriverId when no longer NeedRide
         assignedDriverId:
           transport === TransportStatus.NeedRide ? existing.assignedDriverId : undefined,
-        // Clear legacy fields
-        drivingAlone: undefined,
         updatedAt: now,
       }
     : {

@@ -11,6 +11,7 @@ import {
   ChatInputCommandInteraction,
 } from 'discord.js';
 import { initConfig, getConfig } from './config.js';
+import { migrateParticipantLegacyFields } from './db/migrations/participantMigration.js';
 import { expireOldSessions, getActiveSessionForGuild } from './services/sessionService.js';
 import { execute as executeMunchAssemble, handleCreateSessionModal } from './commands/munchassemble.js';
 import { execute as executeMunchAssembleConfig } from './commands/munchassembleConfig.js';
@@ -62,6 +63,13 @@ async function registerCommands(appId: string, guildId: string, token: string): 
 async function main(): Promise<void> {
   await initConfig();
   const config = getConfig();
+
+  // Run DB migrations before accepting interactions
+  try {
+    await migrateParticipantLegacyFields();
+  } catch (err) {
+    console.error('[bot] Migration failed (non-fatal):', err);
+  }
 
   const client = new Client({
     intents: [
@@ -140,7 +148,7 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
     if (modal.customId === 'modal:create_session') {
       await handleCreateSessionModal(modal, client);
     } else if (modal.customId.startsWith('modal:add_spot:')) {
-      await handleAddSpotModal(modal);
+      await handleAddSpotModal(modal, client);
     } else if (modal.customId.startsWith('modal:driving:')) {
       await handleDrivingModal(modal, client);
     } else if (modal.customId.startsWith('modal:edit_time:')) {
@@ -180,9 +188,9 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
     const [namespace, action] = select.customId.split(':');
 
     if (namespace === 'select' && action === 'vote') {
-      await handleVoteSelect(select);
+      await handleVoteSelect(select, client);
     } else if (namespace === 'restaurant' && action === 'add_select') {
-      await handleAddSpotSelect(select);
+      await handleAddSpotSelect(select, client);
     } else if (namespace === 'carpool' && action === 'need_ride_select') {
       await handleNeedRideSelect(select, client);
     }

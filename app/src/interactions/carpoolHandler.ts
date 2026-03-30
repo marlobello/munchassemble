@@ -4,7 +4,6 @@ import {
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
-  Routes,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
   StringSelectMenuOptionBuilder,
@@ -24,12 +23,8 @@ import { getParticipantsForSession, setTransport } from '../services/participant
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { buildPanel, SELECT } from '../ui/panelBuilder.js';
 import { TransportStatus } from '../types/index.js';
+import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import type { Client } from 'discord.js';
-
-export const CARPOOL_SELECT = {
-  needRide: (sid: string) => `carpool:need_ride:${sid}`,
-  musterDrive: (sid: string) => `carpool:muster_drive:${sid}`,
-};
 
 /**
  * [🚘 Driving Alone] button — toggles DrivingAlone transport status.
@@ -52,10 +47,8 @@ export async function handleDrivingAloneButton(
   const participants = await getParticipantsForSession(session.id);
   const existing = participants.find((p) => p.userId === interaction.user.id);
 
-  // Toggle: if already DrivingAlone (or legacy drivingAlone flag), clear it; otherwise set it
-  const isCurrentlyDrivingAlone =
-    existing?.transportStatus === TransportStatus.DrivingAlone ||
-    existing?.drivingAlone === true;
+  // Toggle: if already DrivingAlone, clear it; otherwise set it
+  const isCurrentlyDrivingAlone = existing?.transportStatus === TransportStatus.DrivingAlone;
   const newTransport = isCurrentlyDrivingAlone ? TransportStatus.None : TransportStatus.DrivingAlone;
 
   await setTransport(
@@ -66,7 +59,7 @@ export async function handleDrivingAloneButton(
     newTransport,
   );
 
-  // Fetch fresh data and update the panel directly via interaction (same as attendanceHandler)
+  // Fetch fresh data and update the panel directly via interaction
   const [updatedParticipants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
@@ -74,9 +67,6 @@ export async function handleDrivingAloneButton(
   ]);
   const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
   await interaction.update(panel as any);
-
-  // Also REST PATCH to ensure the panel is updated even if interaction token expired
-  void refreshPanel(interaction, session, client);
 }
 
 
@@ -137,7 +127,7 @@ export async function handleDrivingModal(
 
   try {
     await registerDriver(session.id, interaction.user.id, seats, musterPoint);
-    await refreshPanel(interaction, session, client);
+    await refreshPanelMessage(session, client);
     await interaction.editReply({
       content: `✅ You're registered as a driver with **${seats}** seat(s) from **${musterPoint}**.`,
     });
@@ -177,7 +167,7 @@ export async function handleNeedRideButton(
         ? (interaction.member as import('discord.js').GuildMember).displayName
         : interaction.user.displayName,
     );
-    await refreshPanel(interaction, session, client);
+    await refreshPanelMessage(session, client);
     await interaction.reply({
       content: `✅ You've been marked as needing a ride. No drivers with open seats yet — you'll be assigned when one registers.`,
       flags: MessageFlags.Ephemeral,
@@ -243,7 +233,7 @@ export async function handleNeedRideSelect(
   const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
   const driverName = participants.find((p) => p.userId === driverId)?.displayName ?? 'your driver';
 
-  await refreshPanel(interaction, session, client);
+  await refreshPanelMessage(session, client);
   await interaction.update({
     content: `✅ You're riding with **${driverName}**!`,
     components: [],
@@ -264,7 +254,7 @@ export async function handleCarpoolSwitchButton(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   await clearCarpoolRole(session.id, interaction.user.id);
-  await refreshPanel(interaction, session, client);
+  await refreshPanelMessage(session, client);
   await interaction.editReply({ content: '✅ Your carpool role has been cleared.' });
 }
 
@@ -291,42 +281,12 @@ export async function handleAutoAssignButton(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const updated = await autoAssignRides(session.id);
-  await refreshPanel(interaction, session, client);
+  await refreshPanelMessage(session, client);
 
   const totalAssigned = updated.reduce((sum, c) => sum + c.riders.length, 0);
   await interaction.editReply({
     content: `✅ Auto-assign complete! **${totalAssigned}** rider${totalAssigned !== 1 ? 's' : ''} matched across **${updated.length}** driver${updated.length !== 1 ? 's' : ''}.`,
   });
-}
-
-/** Refresh the session panel after a carpool change. */
-async function refreshPanel(
-  interaction:
-    | ButtonInteraction
-    | StringSelectMenuInteraction
-    | ModalSubmitInteraction,
-  session: import('../types/index.js').LunchSession,
-  client: Client,
-): Promise<void> {
-  const [participants, restaurants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-    getCarpoolsForSession(session.id),
-  ]);
-
-  const panel = buildPanel(session, participants, restaurants, carpools);
-
-  // Edit the original panel message via REST PATCH (avoids ReadMessageHistory permission)
-  if (session.messageId) {
-    try {
-      await client.rest.patch(
-        Routes.channelMessage(session.channelId, session.messageId),
-        { body: { flags: panel.flags, components: panel.components.map((c) => c.toJSON()) } },
-      );
-    } catch {
-      // Panel message may have been deleted — not critical
-    }
-  }
 }
 
 export { getCarpoolsForSession };
