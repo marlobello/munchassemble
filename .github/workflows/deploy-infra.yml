@@ -64,10 +64,26 @@ jobs:
             --location centralus \
             --output none
 
+      - name: Preserve current container image
+        id: current_image
+        run: |
+          IMAGE=$(az containerapp show \
+            --name ca-munchassemble-prod \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "properties.template.containers[0].image" \
+            --output tsv 2>/dev/null || echo "")
+          # Fall back to placeholder only on very first deploy (app not yet deployed)
+          if [ -z "$IMAGE" ]; then
+            IMAGE="mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Using image: $IMAGE"
+
       - name: Deploy Bicep
         run: |
           az deployment group create \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
             --parameters infra/env/prod.bicepparam \
+            --parameters containerImage="${{ steps.current_image.outputs.image }}" \
             --name "deploy-$(date +%Y%m%d-%H%M%S)"
