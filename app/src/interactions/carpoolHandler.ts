@@ -47,14 +47,16 @@ export async function handleDrivingAloneButton(
   }
 
   const member = interaction.member as import('discord.js').GuildMember;
-  const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
+
+  // Fetch current state to determine toggle direction
+  const participants = await getParticipantsForSession(session.id);
   const existing = participants.find((p) => p.userId === interaction.user.id);
 
-  // Toggle: if already DrivingAlone, clear it; otherwise set it
-  const newTransport =
-    existing?.transportStatus === TransportStatus.DrivingAlone
-      ? TransportStatus.None
-      : TransportStatus.DrivingAlone;
+  // Toggle: if already DrivingAlone (or legacy drivingAlone flag), clear it; otherwise set it
+  const isCurrentlyDrivingAlone =
+    existing?.transportStatus === TransportStatus.DrivingAlone ||
+    existing?.drivingAlone === true;
+  const newTransport = isCurrentlyDrivingAlone ? TransportStatus.None : TransportStatus.DrivingAlone;
 
   await setTransport(
     session.id,
@@ -64,8 +66,17 @@ export async function handleDrivingAloneButton(
     newTransport,
   );
 
-  await refreshPanel(interaction, session, client);
-  await interaction.deferUpdate();
+  // Fetch fresh data and update the panel directly via interaction (same as attendanceHandler)
+  const [updatedParticipants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+  await interaction.update(panel as any);
+
+  // Also REST PATCH to ensure the panel is updated even if interaction token expired
+  void refreshPanel(interaction, session, client);
 }
 
 
