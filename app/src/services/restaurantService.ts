@@ -8,6 +8,7 @@ import {
   removeVoteFromAll,
 } from '../db/repositories/restaurantRepo.js';
 import { recordUsage } from '../db/repositories/favoriteRepo.js';
+import { DuplicateError } from '../utils/errors.js';
 
 export async function addRestaurant(
   sessionId: string,
@@ -22,7 +23,7 @@ export async function addRestaurant(
   const duplicate = existing.find(
     (r) => r.name.toLowerCase() === trimmed.toLowerCase(),
   );
-  if (duplicate) throw new Error(`DUPLICATE:${trimmed}`);
+  if (duplicate) throw new DuplicateError(`${trimmed} is already on the list.`);
 
   const now = new Date().toISOString();
   const restaurant: Restaurant = {

@@ -23,8 +23,11 @@ export async function getRestaurantById(id: string, sessionId: string): Promise<
   try {
     const { resource } = await container().item(id, sessionId).read<Restaurant>();
     return resource ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: number }).code === 404) {
+      return null;
+    }
+    throw err;
   }
 }
 

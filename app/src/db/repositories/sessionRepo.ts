@@ -13,8 +13,11 @@ export async function getSessionById(id: string, guildId: string): Promise<Lunch
   try {
     const { resource } = await container().item(id, guildId).read<LunchSession>();
     return resource ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && (err as { code: number }).code === 404) {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -45,11 +48,12 @@ export async function expireOldSessions(): Promise<void> {
   };
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
   const now = new Date().toISOString();
+  const ttl = 30 * 24 * 60 * 60; // 30 days — auto-purge expired sessions from Cosmos
   await Promise.all(
     resources.map((s) =>
       container()
         .item(s.id, s.guildId)
-        .replace({ ...s, status: 'completed' as SessionStatus, updatedAt: now } as unknown as ItemDefinition),
+        .replace({ ...s, status: 'completed' as SessionStatus, _ttl: ttl, updatedAt: now } as unknown as ItemDefinition),
     ),
   );
 }

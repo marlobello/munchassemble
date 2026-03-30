@@ -180,10 +180,18 @@ export async function handleEditTimeModal(
   const lunchTime = interaction.fields.getTextInputValue('lunchTime').trim();
   const departTime = interaction.fields.getTextInputValue('departTime').trim();
 
-  const timeRegex = /^\d{1,2}:\d{2}$/;
+  // Validate time formats — enforce valid hour (00-23) and minute (00-59)
+  const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
   if (!timeRegex.test(lunchTime) || !timeRegex.test(departTime)) {
     await interaction.reply({
       content: '❌ Invalid time format. Use HH:MM (e.g. 11:15).',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  if (departTime >= lunchTime) {
+    await interaction.reply({
+      content: `❌ Departure time (**${departTime}**) must be before lunch time (**${lunchTime}**).`,
       flags: MessageFlags.Ephemeral,
     });
     return;

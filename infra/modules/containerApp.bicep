@@ -78,6 +78,19 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
             { name: 'DISCORD_GUILD_ID', value: discordGuildId }
+            { name: 'HEALTH_PORT', value: '3000' }
+          ]
+          probes: [
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health'
+                port: 3000
+              }
+              initialDelaySeconds: 15
+              periodSeconds: 30
+              failureThreshold: 3
+            }
           ]
         }
       ]

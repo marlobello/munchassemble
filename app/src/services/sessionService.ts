@@ -65,7 +65,8 @@ export async function finalizeSession(session: LunchSession): Promise<LunchSessi
 }
 
 export async function completeSession(session: LunchSession): Promise<LunchSession> {
-  return updateSession({ ...session, status: SessionStatus.Completed });
+  // Set TTL so completed sessions auto-purge from Cosmos after 30 days (O1)
+  return updateSession({ ...session, status: SessionStatus.Completed, _ttl: 30 * 24 * 60 * 60 });
 }
 
 export async function updateSessionTimes(

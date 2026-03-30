@@ -41,6 +41,7 @@ import {
   handleAutoAssignButton,
 } from './interactions/carpoolHandler.js';
 import { scheduleReminders } from './utils/scheduler.js';
+import { startHealthServer } from './utils/healthServer.js';
 
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
@@ -62,6 +63,10 @@ async function registerCommands(appId: string, guildId: string, token: string): 
 async function main(): Promise<void> {
   await initConfig();
   const config = getConfig();
+
+  // Start health HTTP server before connecting to Discord (O2 — liveness probe)
+  const healthPort = parseInt(process.env.HEALTH_PORT ?? '3000', 10);
+  startHealthServer(healthPort);
 
   const client = new Client({
     intents: [

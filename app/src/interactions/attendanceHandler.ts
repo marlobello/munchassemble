@@ -29,6 +29,10 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
     return;
   }
 
+  // Acknowledge immediately to stay within the 3s Discord window;
+  // all DB work happens after this point.
+  await interaction.deferUpdate();
+
   const member = interaction.member as GuildMember;
 
   // Cascade effects based on new attendance status
@@ -59,5 +63,5 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
   ]);
 
   const panel = buildPanel(session, participants, restaurants, carpools);
-  await interaction.update(panel as any);
+  await interaction.editReply(panel as any);
 }

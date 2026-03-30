@@ -49,6 +49,8 @@ export interface LunchSession {
   lockedRestaurantId?: string;
   createdAt: string;
   updatedAt: string;
+  /** Cosmos DB TTL in seconds. Set to 2592000 (30 days) when session is completed/expired. */
+  _ttl?: number;
 }
 
 /** RSVP + transport for one user within a session. */

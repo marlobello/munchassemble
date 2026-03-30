@@ -69,6 +69,8 @@ module sessionContainer 'cosmosContainer.bicep' = {
     databaseName: database.name
     containerName: 'sessions'
     partitionKey: '/guildId'
+    // TTL enabled; completed sessions set _ttl = 2592000 (30 days) on the document.
+    defaultTtl: -1
   }
 }
 

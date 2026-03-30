@@ -25,6 +25,8 @@ import { buildPanel, buildVoteSelectMenu } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { voteBlockedReason } from '../utils/stateRules.js';
+import { getParticipant } from '../db/repositories/participantRepo.js';
+import { DuplicateError } from '../utils/errors.js';
 import type { Client } from 'discord.js';
 
 /** [🍔 Vote] button — shows a select menu of current restaurants (BR-021). */
@@ -37,7 +39,6 @@ export async function handleVoteButton(interaction: ButtonInteraction): Promise<
   }
 
   // State machine: Out users cannot vote
-  const { getParticipant } = await import('../db/repositories/participantRepo.js');
   const participant = await getParticipant(session.id, interaction.user.id);
   const blocked = voteBlockedReason(participant);
   if (blocked) {
@@ -156,8 +157,7 @@ export async function handleAddSpotSelect(
   try {
     await addRestaurant(session.id, session.guildId, name, interaction.user.id);
   } catch (err: unknown) {
-    const msg = (err as Error).message ?? '';
-    if (msg.startsWith('DUPLICATE:')) {
+    if (err instanceof DuplicateError) {
       await interaction.update({ content: `⚠️ **${name}** is already on the list!`, components: [] });
       return;
     }
@@ -203,8 +203,7 @@ export async function handleAddSpotModal(
   try {
     await addRestaurant(session.id, session.guildId, name, interaction.user.id);
   } catch (err: unknown) {
-    const msg = (err as Error).message ?? '';
-    if (msg.startsWith('DUPLICATE:')) {
+    if (err instanceof DuplicateError) {
       await interaction.reply({ content: `⚠️ **${name}** is already on the list!`, flags: MessageFlags.Ephemeral });
       return;
     }
@@ -240,6 +239,8 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
     return;
   }
 
+  await interaction.deferUpdate();
+
   const leader = [...restaurants].sort((a, b) => b.votes.length - a.votes.length)[0];
   const updatedSession = await lockRestaurant(session, leader.id);
 
@@ -248,7 +249,7 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
     getCarpoolsForSession(session.id),
   ]);
   const panel = buildPanel(updatedSession, participants, restaurants, carpools);
-  await interaction.update(panel as any);
+  await interaction.editReply(panel as any);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

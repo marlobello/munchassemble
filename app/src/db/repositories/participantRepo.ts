@@ -28,8 +28,12 @@ export async function getParticipant(
   try {
     const { resource } = await container().item(id, sessionId).read<Participant>();
     return resource ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    // Only swallow "not found" (404); rethrow anything else (auth, quota, network)
+    if (err instanceof Error && 'code' in err && (err as { code: number }).code === 404) {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -58,8 +62,10 @@ export async function updateAttendanceStatus(
   const existing = await getParticipant(sessionId, userId);
   const now = new Date().toISOString();
 
-  // Out or Maybe → clear transport entirely; transport only valid when In
-  const clearTransport = status === AttendanceStatus.Out || status === AttendanceStatus.Maybe;
+  // Out → clear ALL transport (belt-and-suspenders — service layer handles carpool DB cleanup first).
+  // Maybe → transport is NOT cleared here: DrivingAlone and NeedRide are valid with Maybe.
+  //          The service layer cancels only CanDrive carpools before calling this function.
+  const clearTransport = status === AttendanceStatus.Out;
 
   const participant: Participant = existing
     ? {

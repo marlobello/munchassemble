@@ -26,6 +26,7 @@ import { TransportStatus } from '../types/index.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { transportBlockedReason, canHostCarpool } from '../utils/stateRules.js';
 import { getParticipant } from '../db/repositories/participantRepo.js';
+import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import type { Client } from 'discord.js';
 
 /**
@@ -59,6 +60,9 @@ export async function handleDrivingAloneButton(
     }
   }
 
+  // Acknowledge immediately to stay within the 3s Discord window
+  await interaction.deferUpdate();
+
   if (!isCurrentlyDrivingAlone) {
     // Clear any active CanDrive carpool or NeedRide assignment before switching to Driving Alone
     await clearCarpoolRole(session.id, interaction.user.id);
@@ -72,14 +76,14 @@ export async function handleDrivingAloneButton(
     newTransport,
   );
 
-  // Fetch fresh data and update the panel directly via interaction
+  // Fetch fresh data and update the panel
   const [updatedParticipants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
   const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
-  await interaction.update(panel as any);
+  await interaction.editReply(panel as any);
 }
 
 
@@ -306,7 +310,6 @@ export async function handleAutoAssignButton(
     return;
   }
 
-  const { isCreatorOrAdmin, getMember } = await import('../utils/permissions.js');
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({
       content: '🚫 Only the session creator or an admin can auto-assign rides.',

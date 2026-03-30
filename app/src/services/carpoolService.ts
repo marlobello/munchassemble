@@ -60,13 +60,23 @@ export async function registerDriver(
   // Update participant transport status — no auto-promote; attendance stays as-is for existing In participants
   const autoPromote = !p?.attendanceStatus;
   if (p) {
-    await upsertParticipant({
-      ...p,
-      transportStatus: TransportStatus.CanDrive,
-      attendanceStatus: autoPromote ? AttendanceStatus.In : p.attendanceStatus,
-      assignedDriverId: undefined,
-      updatedAt: now,
-    });
+    try {
+      await upsertParticipant({
+        ...p,
+        transportStatus: TransportStatus.CanDrive,
+        attendanceStatus: autoPromote ? AttendanceStatus.In : p.attendanceStatus,
+        assignedDriverId: undefined,
+        updatedAt: now,
+      });
+    } catch (err) {
+      // Compensating rollback: remove carpool record if participant update failed
+      try {
+        await deleteCarpool(sessionId, driverId);
+      } catch (rollbackErr) {
+        console.error('[registerDriver] Rollback failed — carpool record may be orphaned:', rollbackErr);
+      }
+      throw err;
+    }
   }
 
   return carpool;
@@ -239,8 +249,7 @@ export async function assignRiderToDriver(
   const carpool = await getCarpoolByDriver(sessionId, driverId);
   if (!carpool) throw new Error('Driver not found or has not registered.');
 
-  const available = carpool.seats - carpool.riders.length;
-  if (available <= 0) throw new Error('No seats available with that driver.');
+  if (carpool.seats - carpool.riders.length <= 0) throw new Error('No seats available with that driver.');
 
   // Validate: Out users cannot join a carpool
   const existing = await getParticipant(sessionId, riderId);
@@ -264,11 +273,17 @@ export async function assignRiderToDriver(
     }
   }
 
-  // Don't double-add if already in this carpool
-  if (!carpool.riders.includes(riderId)) {
-    carpool.riders.push(riderId);
-    carpool.updatedAt = new Date().toISOString();
-    await upsertCarpool(carpool);
+  // Re-read the carpool immediately before writing to guard against concurrent assignment
+  const freshCarpool = await getCarpoolByDriver(sessionId, driverId);
+  if (!freshCarpool) throw new Error('Driver not found or has not registered.');
+  if (freshCarpool.seats - freshCarpool.riders.length <= 0) {
+    throw new Error('No seats available with that driver — the carpool just filled up.');
+  }
+
+  if (!freshCarpool.riders.includes(riderId)) {
+    freshCarpool.riders.push(riderId);
+    freshCarpool.updatedAt = new Date().toISOString();
+    await upsertCarpool(freshCarpool);
   }
 
   const now = new Date().toISOString();
@@ -293,5 +308,21 @@ export async function assignRiderToDriver(
         assignedDriverId: driverId,
         updatedAt: now,
       };
-  await upsertParticipant(participant);
+
+  try {
+    await upsertParticipant(participant);
+  } catch (err) {
+    // Compensating rollback: remove rider from carpool if participant update failed
+    try {
+      const rollbackCarpool = await getCarpoolByDriver(sessionId, driverId);
+      if (rollbackCarpool) {
+        rollbackCarpool.riders = rollbackCarpool.riders.filter((id) => id !== riderId);
+        rollbackCarpool.updatedAt = new Date().toISOString();
+        await upsertCarpool(rollbackCarpool);
+      }
+    } catch (rollbackErr) {
+      console.error('[assignRiderToDriver] Rollback failed — carpool may be inconsistent:', rollbackErr);
+    }
+    throw err;
+  }
 }
