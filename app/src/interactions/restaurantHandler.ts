@@ -68,9 +68,9 @@ export async function handleVoteSelect(
 
   await voteForRestaurant(session.id, restaurantId, interaction.user.id);
 
-  // Dismiss the ephemeral vote picker and refresh the main panel
-  await interaction.deferUpdate();
-  try { await interaction.deleteReply(); } catch { /* ephemeral already gone */ }
+  // Dismiss the ephemeral picker immediately (direct update — reliable on mobile)
+  // then REST PATCH the main panel so the vote count updates for everyone.
+  await interaction.update({ content: '✅ Vote recorded!', components: [] });
   await refreshPanelMessage(session, client);
 }
 /** [➕ Add Spot] button — shows favorites not already in session + free-text option (BR-020/BR-024). */
@@ -153,9 +153,8 @@ export async function handleAddSpotSelect(
     }
     throw err;
   }
-  // Dismiss the ephemeral picker and refresh the main panel
-  await interaction.deferUpdate();
-  try { await interaction.deleteReply(); } catch { /* already gone */ }
+  // Dismiss the ephemeral picker immediately, then refresh the main panel.
+  await interaction.update({ content: `✅ **${name}** added!`, components: [] });
   await refreshPanelMessage(session, client);
 }
 
