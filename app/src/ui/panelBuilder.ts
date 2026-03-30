@@ -28,7 +28,6 @@ export const BTN = {
   needRide: (sid: string) => `carpool:need_ride:${sid}`,
   carpoolSwitch: (sid: string) => `carpool:switch:${sid}`,
   autoAssign: (sid: string) => `carpool:auto_assign:${sid}`,
-  muster: (sid: string) => `muster:pick:${sid}`,
   editTime: (sid: string) => `admin:edit_time:${sid}`,
   finalize: (sid: string) => `admin:finalize:${sid}`,
   ping: (sid: string) => `admin:ping:${sid}`,
@@ -36,7 +35,6 @@ export const BTN = {
 
 export const SELECT = {
   vote: (sid: string) => `select:vote:${sid}`,
-  muster: (sid: string) => `muster:select:${sid}`,
   carpoolNeedRide: (sid: string) => `carpool:need_ride_select:${sid}`,
 } as const;
 
@@ -100,22 +98,8 @@ function buildPanelContent(
     for (const c of carpools) {
       const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? `<@${c.driverId}>`;
       const riderNames = c.riders.map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`).join(', ');
-      lines.push(`🚗 **${driverName}** (${c.riders.length}/${c.seats} seats) @ ${c.musterPoint}${c.riders.length > 0 ? ` — ${riderNames}` : ''}`);
-    }
-  }
-
-  // Muster points — exclude solo drivers
-  const withMuster = participants.filter(
-    (p) => p.musterPoint && p.attendanceStatus !== AttendanceStatus.DrivingAlone,
-  );
-  if (withMuster.length > 0) {
-    const grouped = withMuster.reduce<Record<string, string[]>>((acc, p) => {
-      (acc[p.musterPoint!] ??= []).push(p.displayName);
-      return acc;
-    }, {});
-    lines.push('', '### 📍 Muster Points');
-    for (const [point, names] of Object.entries(grouped)) {
-      lines.push(`📍 **${point}:** ${names.join(', ')}`);
+      const seatsFree = c.seats - c.riders.length;
+      lines.push(`🚗 **${driverName}** (${c.riders.length}/${c.seats} seats${seatsFree > 0 ? `, ${seatsFree} open` : ', full'}) @ ${c.musterPoint}${c.riders.length > 0 ? ` — ${riderNames}` : ''}`);
     }
   }
 
@@ -147,20 +131,13 @@ function buildRestaurantRow(sessionId: string, locked: boolean): ActionRowBuilde
 /** Row 3 — Transportation */
 function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel("🚗 I'm Driving").setStyle(ButtonStyle.Success).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel('🚗 Can Drive').setStyle(ButtonStyle.Success).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.needRide(sessionId)).setLabel('🚌 Need Ride').setStyle(ButtonStyle.Primary).setDisabled(locked),
   );
 }
 
-/** Row 4 — Location */
-function buildLocationRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
-  return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(BTN.muster(sessionId)).setLabel('📍 Set Muster Point').setStyle(ButtonStyle.Secondary).setDisabled(locked),
-  );
-}
-
-/** Row 5 — Admin */
+/** Row 4 — Admin */
 function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(BTN.autoAssign(sessionId)).setLabel('🤖 Auto Assign').setStyle(ButtonStyle.Secondary).setDisabled(locked),
@@ -219,10 +196,6 @@ export function buildPanel(
     // ── Transportation ──
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Transportation ──**'))
     .addActionRowComponents(buildTransportRow(session.id, false))
-    .addSeparatorComponents(sep())
-    // ── Location ──
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Location ──**'))
-    .addActionRowComponents(buildLocationRow(session.id, false))
     .addSeparatorComponents(sep())
     // ── Admin ──
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Admin ──**'))

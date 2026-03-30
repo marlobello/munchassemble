@@ -18,10 +18,10 @@ import {
   requestRide,
   autoAssignRides,
   getCarpoolsForSession,
+  assignRiderToDriver,
 } from '../services/carpoolService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
-import { getMusterPoints } from '../services/musterService.js';
 import { buildPanel, SELECT } from '../ui/panelBuilder.js';
 import type { Client } from 'discord.js';
 
@@ -30,13 +30,13 @@ export const CARPOOL_SELECT = {
   musterDrive: (sid: string) => `carpool:muster_drive:${sid}`,
 };
 
-/** [🚗 I'm Driving] button — opens modal for seats + muster point. */
+/** [🚗 Can Drive] button — opens modal for seats + pickup point. */
 export async function handleDrivingButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
 
   const modal = new ModalBuilder()
     .setCustomId(`modal:driving:${sessionId}`)
-    .setTitle('🚗 Register as Driver');
+    .setTitle('🚗 Can Drive');
 
   const seatsInput = new TextInputBuilder()
     .setCustomId('seats')
@@ -47,7 +47,7 @@ export async function handleDrivingButton(interaction: ButtonInteraction): Promi
 
   const musterInput = new TextInputBuilder()
     .setCustomId('musterPoint')
-    .setLabel('Your muster/pickup point')
+    .setLabel('Your pickup location (muster point)')
     .setStyle(TextInputStyle.Short)
     .setPlaceholder('e.g. Garage A')
     .setRequired(true);
@@ -99,7 +99,7 @@ export async function handleDrivingModal(
   }
 }
 
-/** [🚌 Need Ride] button — shows muster point select for rider. */
+/** [🚌 Need Ride] button — shows available Can Drive people with open seats. */
 export async function handleNeedRideButton(
   interaction: ButtonInteraction,
   client: Client,
@@ -111,9 +111,15 @@ export async function handleNeedRideButton(
     return;
   }
 
-  const musterPoints = await getMusterPoints(session.guildId);
-  if (musterPoints.length === 0) {
-    // No muster points — just register as rider without one
+  const [carpools, participants] = await Promise.all([
+    getCarpoolsForSession(session.id),
+    getParticipantsForSession(session.id),
+  ]);
+
+  const availableDrivers = carpools.filter((c) => c.seats > c.riders.length);
+
+  if (availableDrivers.length === 0) {
+    // No drivers yet — just register as needing a ride
     await requestRide(
       session.id,
       interaction.user.id,
@@ -124,31 +130,36 @@ export async function handleNeedRideButton(
     );
     await refreshPanel(interaction, session, client);
     await interaction.reply({
-      content: `✅ You've been added as needing a ride.`,
+      content: `✅ You've been marked as needing a ride. No drivers with open seats yet — you'll be assigned when one registers.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const options = musterPoints.map((mp) =>
-    new StringSelectMenuOptionBuilder().setLabel(mp.name).setValue(mp.name),
-  );
+  const options = availableDrivers.map((c) => {
+    const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? `<@${c.driverId}>`;
+    const seatsLeft = c.seats - c.riders.length;
+    return new StringSelectMenuOptionBuilder()
+      .setLabel(`${driverName} — ${c.musterPoint}`)
+      .setDescription(`${seatsLeft} seat${seatsLeft !== 1 ? 's' : ''} available`)
+      .setValue(c.driverId);
+  });
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(CARPOOL_SELECT.needRide(sessionId))
-      .setPlaceholder('Select your muster/pickup point')
+      .setCustomId(SELECT.carpoolNeedRide(sessionId))
+      .setPlaceholder('Pick a driver to ride with')
       .addOptions(options),
   );
 
   await interaction.reply({
-    content: '📍 Where should your driver pick you up?',
+    content: '🚗 Choose your driver:',
     components: [row],
     flags: MessageFlags.Ephemeral,
   });
 }
 
-/** Handle muster point selection for a rider. */
+/** Handle driver selection for a rider. */
 export async function handleNeedRideSelect(
   interaction: StringSelectMenuInteraction,
   client: Client,
@@ -160,27 +171,32 @@ export async function handleNeedRideSelect(
     return;
   }
 
-  const musterPoint = interaction.values[0];
+  const driverId = interaction.values[0];
   const member = interaction.member as import('discord.js').GuildMember;
 
-  await requestRide(
-    session.id,
-    interaction.user.id,
-    interaction.user.username,
-    member?.displayName ?? interaction.user.displayName,
-  );
-
-  // Also store muster point on the participant record
-  const { upsertParticipant } = await import('../db/repositories/participantRepo.js');
-  const { getParticipant } = await import('../db/repositories/participantRepo.js');
-  const p = await getParticipant(session.id, interaction.user.id);
-  if (p) {
-    await upsertParticipant({ ...p, musterPoint, updatedAt: new Date().toISOString() });
+  try {
+    await assignRiderToDriver(
+      session.id,
+      interaction.user.id,
+      driverId,
+      interaction.user.username,
+      member?.displayName ?? interaction.user.displayName,
+    );
+  } catch (err) {
+    await interaction.update({
+      content: `❌ ${err instanceof Error ? err.message : 'Could not assign ride.'}`,
+      components: [],
+    });
+    return;
   }
+
+  // Fetch driver name for confirmation
+  const [participants] = await Promise.all([getParticipantsForSession(session.id)]);
+  const driverName = participants.find((p) => p.userId === driverId)?.displayName ?? 'your driver';
 
   await refreshPanel(interaction, session, client);
   await interaction.update({
-    content: `✅ You need a ride from **${musterPoint}**. We'll find you a driver!`,
+    content: `✅ You're riding with **${driverName}**!`,
     components: [],
   });
 }

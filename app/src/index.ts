@@ -39,9 +39,7 @@ import {
   handleCarpoolSwitchButton,
   handleAutoAssignButton,
 } from './interactions/carpoolHandler.js';
-import { handleMusterButton, handleMusterSelect } from './interactions/musterHandler.js';
 import { scheduleReminders } from './utils/scheduler.js';
-import { seedDefaultMusterPoints } from './services/musterService.js';
 
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
@@ -85,7 +83,6 @@ async function main(): Promise<void> {
     // Reschedule reminders for any active sessions (P3 — restart resilience)
     for (const guild of c.guilds.cache.values()) {
       try {
-        await seedDefaultMusterPoints(guild.id);
         const session = await getActiveSessionForGuild(guild.id);
         if (session) {
           scheduleReminders(session, client);
@@ -110,7 +107,6 @@ async function main(): Promise<void> {
 
   client.on(Events.GuildCreate, async (guild) => {
     const cfg = getConfig();
-    await seedDefaultMusterPoints(guild.id);
     await registerCommands(client.user!.id, guild.id, cfg.discordBotToken);
   });
 
@@ -168,8 +164,6 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       else if (action === 'need_ride') await handleNeedRideButton(btn, client);
       else if (action === 'switch') await handleCarpoolSwitchButton(btn, client);
       else if (action === 'auto_assign') await handleAutoAssignButton(btn, client);
-    } else if (namespace === 'muster') {
-      await handleMusterButton(btn, client);
     } else if (namespace === 'admin') {
       if (action === 'finalize') await handleFinalizeButton(btn);
       else if (action === 'ping') await handlePingButton(btn);
@@ -189,8 +183,6 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       await handleAddSpotSelect(select);
     } else if (namespace === 'carpool' && action === 'need_ride_select') {
       await handleNeedRideSelect(select, client);
-    } else if (namespace === 'muster' && action === 'select') {
-      await handleMusterSelect(select, client);
     }
     return;
   }

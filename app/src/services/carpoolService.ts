@@ -137,3 +137,63 @@ export async function autoAssignRides(sessionId: string): Promise<Carpool[]> {
 }
 
 export { getCarpoolsForSession };
+
+/**
+ * Directly assigns a rider to a specific driver's carpool.
+ * Removes the rider from any previous carpool, and unregisters them as a
+ * driver if they previously registered as one.
+ * Throws if the driver's carpool doesn't exist or has no available seats.
+ */
+export async function assignRiderToDriver(
+  sessionId: string,
+  riderId: string,
+  driverId: string,
+  username: string,
+  displayName: string,
+): Promise<void> {
+  const carpool = await getCarpoolByDriver(sessionId, driverId);
+  if (!carpool) throw new Error('Driver not found or has not registered.');
+
+  const available = carpool.seats - carpool.riders.length;
+  if (available <= 0) throw new Error('No seats available with that driver.');
+
+  // If the rider was previously a driver, unregister them
+  const prevCarpoolAsDriver = await getCarpoolByDriver(sessionId, riderId);
+  if (prevCarpoolAsDriver) {
+    await unregisterDriver(sessionId, riderId);
+  }
+
+  // Remove rider from any previous driver's carpool
+  const existing = await getParticipant(sessionId, riderId);
+  if (existing?.assignedDriverId && existing.assignedDriverId !== driverId) {
+    const prevCarpool = await getCarpoolByDriver(sessionId, existing.assignedDriverId);
+    if (prevCarpool) {
+      prevCarpool.riders = prevCarpool.riders.filter((id) => id !== riderId);
+      prevCarpool.updatedAt = new Date().toISOString();
+      await upsertCarpool(prevCarpool);
+    }
+  }
+
+  // Don't double-add if already in this carpool
+  if (!carpool.riders.includes(riderId)) {
+    carpool.riders.push(riderId);
+    carpool.updatedAt = new Date().toISOString();
+    await upsertCarpool(carpool);
+  }
+
+  const now = new Date().toISOString();
+  const participant: import('../types/index.js').Participant = existing
+    ? { ...existing, role: ParticipantRole.Rider, assignedDriverId: driverId, updatedAt: now }
+    : {
+        id: `${sessionId}::${riderId}`,
+        sessionId,
+        userId: riderId,
+        username,
+        displayName,
+        attendanceStatus: 'in' as import('../types/index.js').Participant['attendanceStatus'],
+        role: ParticipantRole.Rider,
+        assignedDriverId: driverId,
+        updatedAt: now,
+      };
+  await upsertParticipant(participant);
+}

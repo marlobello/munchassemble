@@ -139,7 +139,7 @@ describe('buildPanel (Components v2)', () => {
   it('admin row has correct button customIds', () => {
     const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
     const rows = getActionRows(components);
-    const adminBtns = rows[4].components; // row 4 = admin
+    const adminBtns = rows[3].components; // row 3 = admin (no location row)
     const ids = adminBtns.map((b: any) => b.custom_id);
     expect(ids).toContain(BTN.finalize('sess-1'));
     expect(ids).toContain(BTN.ping('sess-1'));
