@@ -150,7 +150,6 @@ function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder
     new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel("🚗 I'm Driving").setStyle(ButtonStyle.Success).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.needRide(sessionId)).setLabel('🚌 Need Ride').setStyle(ButtonStyle.Primary).setDisabled(locked),
-    new ButtonBuilder().setCustomId(BTN.carpoolSwitch(sessionId)).setLabel('🔄 Switch').setStyle(ButtonStyle.Secondary).setDisabled(locked),
   );
 }
 
