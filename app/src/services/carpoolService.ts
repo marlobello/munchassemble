@@ -210,6 +210,8 @@ export async function assignRiderToDriver(
   username: string,
   displayName: string,
 ): Promise<void> {
+  if (riderId === driverId) throw new Error('You cannot join your own carpool.');
+
   const carpool = await getCarpoolByDriver(sessionId, driverId);
   if (!carpool) throw new Error('Driver not found or has not registered.');
 

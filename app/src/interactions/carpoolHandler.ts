@@ -160,7 +160,9 @@ export async function handleNeedRideButton(
     getParticipantsForSession(session.id),
   ]);
 
-  const availableDrivers = carpools.filter((c) => c.seats > c.riders.length);
+  const availableDrivers = carpools.filter(
+    (c) => c.seats > c.riders.length && c.driverId !== interaction.user.id,
+  );
 
   if (availableDrivers.length === 0) {
     // No drivers yet — just register as needing a ride
