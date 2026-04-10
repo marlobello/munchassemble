@@ -1,5 +1,5 @@
 import type { ButtonInteraction, GuildMember, ModalSubmitInteraction } from 'discord.js';
-import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder } from 'discord.js';
+import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
 import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '../services/sessionService.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
@@ -7,7 +7,6 @@ import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
-import { storePendingInteraction, takePendingInteraction } from '../utils/pendingInteractions.js';
 import { AttendanceStatus, TransportStatus } from '../types/index.js';
 
 /** [🔒 Finalize Plan] button — locks the session (BR-004). Creator/admin only. */
@@ -123,7 +122,7 @@ export async function handlePingButton(interaction: ButtonInteraction): Promise<
   });
 }
 
-/** [✏️ Edit Time] button — defers update, stores interaction, shows ephemeral with open-form button. */
+/** [✏️ Edit Time] button — opens the time-edit modal directly. Creator/admin only. */
 export async function handleEditTimeButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const session = await getActiveSessionForGuild(interaction.guildId!);
@@ -137,33 +136,6 @@ export async function handleEditTimeButton(interaction: ButtonInteraction): Prom
       content: '🚫 Only the session creator or a server admin can edit the time.',
       flags: MessageFlags.Ephemeral,
     });
-    return;
-  }
-
-  // Store the panel interaction so the modal submit can update it.
-  // showModal() must be the first response, so we use an intermediate ephemeral step.
-  await interaction.deferUpdate();
-  storePendingInteraction(`edit_time:${sessionId}`, interaction);
-
-  const { ButtonBuilder, ButtonStyle, ActionRowBuilder } = await import('discord.js');
-  const openButton = new ButtonBuilder()
-    .setCustomId(`admin:edit_time_open:${sessionId}`)
-    .setLabel('✏️ Open Edit Form')
-    .setStyle(ButtonStyle.Primary);
-
-  await interaction.followUp({
-    content: `⏰ Current times — Depart: **${session.departTime}** | Lunch: **${session.lunchTime}**\nClick below to edit:`,
-    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(openButton)],
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-/** [✏️ Open Edit Form] intermediate button — shows the modal. customId: admin:edit_time_open:<sessionId> */
-export async function handleEditTimeOpenModal(interaction: ButtonInteraction): Promise<void> {
-  const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -208,7 +180,6 @@ export async function handleEditTimeModal(
   const lunchTime = interaction.fields.getTextInputValue('lunchTime').trim();
   const departTime = interaction.fields.getTextInputValue('departTime').trim();
 
-  // Validate time formats — enforce valid hour (00-23) and minute (00-59)
   const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
   if (!timeRegex.test(lunchTime) || !timeRegex.test(departTime)) {
     await interaction.reply({
@@ -230,24 +201,10 @@ export async function handleEditTimeModal(
   try {
     const updated = await updateSessionTimes(session, lunchTime, departTime);
 
-    // Reschedule reminders with the new time
     const { scheduleReminders } = await import('../utils/scheduler.js');
     scheduleReminders(updated, client);
 
-    // Update panel via stored button interaction (interaction webhook — always works).
-    const pending = takePendingInteraction(`edit_time:${sessionId}`);
-    if (pending?.interaction) {
-      const [participants, restaurants, carpools] = await Promise.all([
-        getParticipantsForSession(updated.id),
-        getRestaurantsForSession(updated.id),
-        getCarpoolsForSession(updated.id),
-      ]);
-      const panel = buildPanel(updated, participants, restaurants, carpools);
-      await pending.interaction.editReply(panel as any);
-    } else {
-      // Fallback: try REST patch (may fail if bot lacks channel permissions)
-      await refreshPanelMessage(updated, client);
-    }
+    await refreshPanelMessage(updated, client);
 
     await interaction.editReply({
       content: `✅ Times updated — Lunch: **${lunchTime}**, Depart: **${departTime}**.`,

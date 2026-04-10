@@ -27,7 +27,6 @@ import {
   handleFinalizeButton,
   handlePingButton,
   handleEditTimeButton,
-  handleEditTimeOpenModal,
   handleEditTimeModal,
 } from './interactions/adminHandler.js';
 import {
@@ -175,7 +174,6 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       if (action === 'finalize') await handleFinalizeButton(btn);
       else if (action === 'ping') await handlePingButton(btn);
       else if (action === 'edit_time') await handleEditTimeButton(btn);
-      else if (action === 'edit_time_open') await handleEditTimeOpenModal(btn);
     }
     return;
   }
