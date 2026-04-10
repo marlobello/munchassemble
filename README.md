@@ -1,14 +1,126 @@
 # Munch Assemble
 
-A Discord bot that helps a group coordinate a same-day (or future) lunch outing via a single self-updating session panel in Discord. Invoke `/munchassemble` to create a session, then the group can RSVP, vote on a restaurant, coordinate carpools, and set muster points — all without chat chaos.
+A Discord bot that coordinates same-day (or future) lunch outings for a group. One `/munchassemble` command creates a live session panel — everyone RSVPs, picks a restaurant from the configured list, coordinates carpools and muster points, all in one self-updating Discord message.
+
+## How It Works
+
+The bot posts a single **session panel** message that updates in-place with every interaction. No chat spam — everyone works from the same card.
+
+```
+📅 Lunch Session — Friday Apr 11
+⏰ Lunch 11:15 | Depart 11:00
+
+✅ Attendance
+  In:    Alex, Jordan, Sam
+  Maybe: Casey
+  Out:   Riley
+
+🍔 Restaurant (voting open)
+  Chipotle ████ 3 votes
+  Sushi Place ██ 1 vote
+  [Vote]  [➕ Add Spot]  [🔒 Lock Choice]
+
+🚗 Transportation
+  [🚗 Can Drive]  [🚌 Need Ride]  [🚘 Driving Alone]
+  Sam → Garage A (2/3 seats) → Jordan
+
+⚙️ Admin
+  [🔒 Finalize]  [🔔 Ping Unanswered]  [✏️ Edit Time]  [⚡ Auto Assign]
+```
+
+### User Flow
+
+1. **Admin runs `/munchassemble`** — fills in a modal (date, times, notes) → panel posts to channel.
+2. **Anyone taps I'm In / Maybe / Out** → panel updates instantly with their name.
+3. **Anyone taps Vote** → selects from the restaurant list → panel vote count updates.
+4. **Anyone taps ➕ Add Spot** → picks from the admin-configured restaurant list → added to the vote.
+5. **Drivers tap 🚗 Can Drive** → modal asks for seats + muster point (from configured list) → carpool appears on panel.
+6. **Riders tap 🚌 Need Ride** → choose a driver from a list of available rides → assigned under that driver on panel.
+7. **Admin taps 🔒 Finalize** → panel locks; bot posts a summary to the channel.
+8. **Bot auto-posts reminders** at T-15 and T-5 minutes before departure.
+
+---
+
+## Commands
+
+### `/munchassemble`
+
+Creates a new lunch session. Opens a modal:
+
+| Field | Default | Description |
+|---|---|---|
+| Date | Today | Session date (e.g. `2026-04-11`) |
+| Lunch Time | `11:15` | Time group arrives at restaurant (24h HH:MM) |
+| Departure Time | `11:00` | Time group departs muster points (24h HH:MM) |
+| Notes | _(blank)_ | Optional free-text note shown on the panel |
+
+> Only one active session per server at a time. A second `/munchassemble` returns an error until the current session ends.
+
+---
+
+### `/munchassemble-config`
+
+Admin-only (requires **Manage Server** permission). Manages persistent server configuration stored in Cosmos DB.
+
+#### `session`
+
+| Subcommand | Description |
+|---|---|
+| `/munchassemble-config session cancel` | Cancels the current active session so a new one can be created |
+
+#### `musterpoint`
+
+Muster points are named pickup/meeting locations that drivers and riders choose from (e.g. "Garage A", "Main Lobby").
+
+| Subcommand | Description |
+|---|---|
+| `/munchassemble-config musterpoint add <name>` | Add a muster point to the list |
+| `/munchassemble-config musterpoint remove <name>` | Remove a muster point from the list |
+| `/munchassemble-config musterpoint list` | Show all configured muster points |
+
+> Drivers select their muster point when they click **Can Drive**. Riders see it next to each driver when they click **Need Ride**.
+
+#### `restaurant`
+
+The restaurant pick list is the only source restaurants can be added from. Users cannot type free-form restaurant names.
+
+| Subcommand | Description |
+|---|---|
+| `/munchassemble-config restaurant add <name>` | Add a restaurant to the pick list |
+| `/munchassemble-config restaurant remove <name>` | Remove a restaurant from the pick list |
+| `/munchassemble-config restaurant list` | Show all configured restaurants |
+
+> When a user taps **➕ Add Spot**, they see a select menu of restaurants from this list that haven't been added to the current session yet.
+
+---
+
+## Panel Buttons Reference
+
+| Button | Who | What it does |
+|---|---|---|
+| ✅ I'm In | Anyone | Mark yourself attending; auto-promotes Unset to In |
+| 🤔 Maybe | Anyone | Mark yourself as maybe |
+| ❌ I'm Out | Anyone | Mark yourself out; clears your vote and transport |
+| 🍔 Vote | Anyone In/Maybe | Pick your preferred restaurant from a select menu |
+| ➕ Add Spot | Anyone In/Maybe | Add a restaurant from the configured list to the vote |
+| 🔒 Lock Choice | Creator/Admin | Lock the winning restaurant; disables voting |
+| 🚗 Can Drive | In only | Register as a driver (modal: seats + muster point) |
+| 🚌 Need Ride | In/Maybe | Select a driver, or be queued if none available |
+| 🚘 Driving Alone | In/Maybe | Mark yourself as driving independently |
+| 🔒 Finalize Plan | Creator/Admin | Lock the session and post a summary |
+| 🔔 Ping Unanswered | Creator/Admin | Mention all members who haven't RSVPed |
+| ✏️ Edit Time | Creator/Admin | Update lunch time and departure time |
+| ⚡ Auto Assign | Creator/Admin | Auto-distribute unassigned riders across available drivers |
+
+---
 
 ## Architecture Overview
 
 | Component | Technology |
-|-----------|-----------|
+|---|---|
 | Discord bot backend | TypeScript / Node.js on Azure Container Apps |
 | Bot connection | discord.js Gateway WebSocket (ADR-0005) |
-| Persistent storage | Azure Cosmos DB for NoSQL (Serverless, 6 containers) |
+| Persistent storage | Azure Cosmos DB for NoSQL (Serverless) |
 | Secrets | Azure Key Vault (Managed Identity access) |
 | Observability | Azure Application Insights |
 | Container registry | Azure Container Registry |
@@ -17,20 +129,34 @@ A Discord bot that helps a group coordinate a same-day (or future) lunch outing 
 
 **Primary region:** Central US · **Fallback region:** East US 2
 
-## Features
+**Cosmos DB containers:** `sessions`, `participants`, `restaurants`, `carpools`, `musterpoints`, `restaurantoptions`
 
-| Phase | Features | Status |
-|---|---|---|
-| Phase 1 (MVP) | `/munchassemble`, RSVP (In/Maybe/Out), restaurant voting + favorites, live panel, lock/finalize, ping unanswered | ✅ Built |
-| Phase 2 | Carpool coordination, muster points, `/munchassemble-config` | 🔜 Next |
-| Phase 3 | Smart reminders (T-15, T-5), auto-assign rides | 🔜 Later |
+---
 
 ## Docs
 
 - [`docs/brd.md`](docs/brd.md) — Business requirements (BR-001 → BR-063)
 - [`docs/nfr.md`](docs/nfr.md) — Non-functional requirements
-- [`docs/adr/`](docs/adr/) — Architecture decision records (see ADR-0005 for bot architecture)
+- [`docs/adr/`](docs/adr/) — Architecture decision records
 - [`docs/runbooks/`](docs/runbooks/) — Operational procedures
+- [`docs/user-journeys.md`](docs/user-journeys.md) — Step-by-step user flows with sequence diagrams
+
+---
+
+## Discord Bot Setup
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application.
+2. **Bot tab** → Enable **Server Members Intent** (needed for Ping Unanswered).
+3. **OAuth2 → URL Generator** → scopes: `bot` + `applications.commands` → Bot Permissions:
+   - ✅ View Channels
+   - ✅ Send Messages
+   - ✅ Read Message History
+   - ✅ Use Application Commands
+4. Copy the generated URL → invite the bot to your server.
+5. Grant **View Channels** + **Send Messages** on the planning channel (channel-level override recommended).
+6. Store the **Bot Token** and **Application ID** in Key Vault (see below).
+
+---
 
 ## Required Secrets (Key Vault / `.env`)
 
@@ -42,9 +168,11 @@ A Discord bot that helps a group coordinate a same-day (or future) lunch outing 
 
 For local dev, copy `app/.env.example` to `app/.env` and fill in the values.
 
+---
+
 ## Quick Start (Local Dev)
 
-> Prerequisites: Node.js LTS, Azure CLI, Docker
+> Prerequisites: Node.js LTS, Azure CLI
 
 ```bash
 # Install dependencies
@@ -59,6 +187,8 @@ npm run dev
 # Build & test
 npm run build && npm test
 ```
+
+---
 
 ## Infrastructure Deployment
 
@@ -81,30 +211,26 @@ az deployment group create \
   --parameters infra/env/dev.bicepparam
 
 # 4. Add secrets to Key Vault (first time only)
-KV=$(az deployment group show -g rg-munchassemble-dev -n <deploy-name> --query 'properties.outputs.keyVaultUri.value' -o tsv)
 az keyvault secret set --vault-name <kv-name> --name discord-bot-token --value <token>
 az keyvault secret set --vault-name <kv-name> --name discord-application-id --value <app-id>
+az keyvault secret set --vault-name <kv-name> --name cosmos-endpoint --value <endpoint>
 ```
 
-## Discord Bot Setup
-
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications) → New Application.
-2. Add a Bot. Under **Privileged Gateway Intents**, enable **Server Members Intent** (needed for Ping Unanswered).
-3. Generate an invite URL with scopes `bot` + `applications.commands` and permissions: View Channels, Send Messages, Read Message History, Use Application Commands.
-4. Invite the bot to your server.
-5. Store the **Bot Token** and **Application ID** in Key Vault (see above).
+---
 
 ## CI/CD
 
-GitHub Actions workflows (requires Azure OIDC federated credentials set up):
+GitHub Actions workflows (requires Azure OIDC federated credentials):
 
 | Workflow | Trigger | Action |
 |---|---|---|
-| `ci.yml` | PRs + pushes | Build, test, Bicep lint |
-| `deploy-infra.yml` | Infra changes on `main` | Bicep what-if (PR) / deploy (merge) |
-| `deploy-app.yml` | App changes on `main` | Build image → push ACR → update Container App |
+| `ci.yml` | PRs + pushes to `main` | Build, test, Bicep lint |
+| `deploy-infra.yml` | Infra file changes on `main` | Bicep what-if (PR) / deploy (push) |
+| `deploy-app.yml` | App file changes on `main` | Build image → push ACR → update Container App |
 
 **Required GitHub secrets:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+
+---
 
 ## Contributing
 

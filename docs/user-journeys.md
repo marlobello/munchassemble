@@ -84,25 +84,21 @@ sequenceDiagram
 
     Jordan->>Panel: taps ➕ Add Spot
     Panel->>Bot: button interaction
-    Bot->>DB: fetch top favorites for guild (up to 23)
+    Bot->>DB: fetch configured restaurant list for guild
     Bot->>DB: fetch current session restaurants
-    Bot->>Jordan: ephemeral select menu (favorites not yet in session + "Type new...")
+    Bot->>Bot: filter out restaurants already in session
+    Bot->>Jordan: ephemeral select menu (available restaurants from configured list)
 
-    alt Jordan picks a favorite
-        Jordan->>Bot: selects favorite name
-        Bot->>DB: add restaurant to session
-        Bot->>DB: increment favorite usage count
-        Bot->>Jordan: ephemeral "✅ [Name] added!"
-        Bot->>Panel: refresh panel
-    else Jordan types a new name
-        Jordan->>Bot: selects "✏️ Type a new restaurant name..."
-        Bot->>Jordan: modal (restaurant name field)
-        Jordan->>Bot: submits modal with new name
-        Bot->>DB: add restaurant to session + record as new favorite
-        Bot->>Jordan: ephemeral "✅ [Name] added to the vote!"
-        Bot->>Panel: refresh panel
-    end
+    Jordan->>Bot: selects "Chipotle"
+    Bot->>DB: add restaurant to session
+    Bot->>Jordan: ephemeral "✅ Chipotle added to the vote!"
+    Bot->>Panel: refresh panel (Chipotle appears in restaurant list)
 ```
+
+**Key rules:**
+- Only restaurants on the guild's configured list can be added (BR-024).
+- The select menu only shows restaurants not already in the current session.
+- Admins manage the list with `/munchassemble-config restaurant add/remove/list` (BR-024).
 
 ---
 

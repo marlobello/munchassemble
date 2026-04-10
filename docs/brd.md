@@ -34,7 +34,7 @@
 
 ### Session Lifecycle
 
-- **BR-001 Session Creation:** Any user can invoke `/munchassemble` to start a new lunch session. The bot presents a modal with: Date (default = today), Lunch time (default 11:15 AM), Departure time (default 11:00 AM), optional initial restaurant suggestion, optional notes. Only one active session is allowed per Discord server at a time; attempting to create a second returns an ephemeral error.
+- **BR-001 Session Creation:** Any user can invoke `/munchassemble` to start a new lunch session. The bot presents a modal with: Date (default = today), Lunch time (default 11:15 AM), Departure time (default 11:00 AM), optional notes. Only one active session is allowed per Discord server at a time; attempting to create a second returns an ephemeral error.
 - **BR-002 Session Panel:** On session creation, the bot posts a single persistent message (the "session panel") containing an embed (live summary) and action rows of buttons. This panel is the single source of truth and is edited in-place on every state change.
 - **BR-003 Session Status:** A session has statuses: `planning` → `locked` → `completed`. The session creator or a Discord server admin/mod can advance the status.
 - **BR-004 Session Finalization:** Clicking "🔒 Finalize Plan" (creator/admin only) advances status to `locked`, trims the action rows to [View Details] and [Leave Plan], and posts a summary message.
@@ -65,11 +65,11 @@ Decided 2026-03-30. Implemented in `src/utils/stateRules.ts`.
 
 ### Restaurant Voting
 
-- **BR-020 Add Restaurant:** Any user can click "➕ Add Spot" which opens a modal (Name field). The bot checks the favorites list and pre-populates a quick-select if matching names exist.
+- **BR-020 Add Restaurant:** Any user can click "➕ Add Spot" which shows an ephemeral select menu of restaurants from the guild's configured restaurant list (excluding any already added to the current session). Users cannot enter free-form restaurant names; all options must be pre-configured by an admin.
 - **BR-021 Vote:** Any user can cast a vote via a select menu listing current restaurant options. Users can change their vote at any time before the session is locked. Each user has exactly one vote.
 - **BR-022 Leaderboard:** The panel displays restaurants sorted by vote count descending.
 - **BR-023 Lock Restaurant:** Session creator or admin can click "🔒 Lock Choice" to lock the winning restaurant. After lock, voting and adding spots are disabled.
-- **BR-024 Favorites:** When a restaurant name is added or selected, it is persisted in a per-guild favorites collection in Cosmos DB (with usage count and last-used timestamp). When opening "Add Spot", a select menu with the top favorites (up to 10) is shown alongside a free-text option. Favorites are ordered by usage frequency.
+- **BR-024 Restaurant Configuration:** Server admins can use `/munchassemble-config restaurant add <name>`, `remove <name>`, and `list` to manage the guild's restaurant pick list. Changes are persisted in Cosmos DB. Only restaurants on this list can be added to a session.
 
 ### Carpool Coordination (Phase 2)
 
@@ -103,11 +103,11 @@ Decided 2026-03-30. Implemented in `src/utils/stateRules.ts`.
 
 ```
 LunchSession       { id, guildId, channelId, messageId, creatorId, date, lunchTime, departTime, notes, status, lockedRestaurantId, createdAt, updatedAt }
-Participant        { sessionId, userId, username, attendanceStatus, role, assignedDriverId, musterPoint }
+Participant        { sessionId, userId, username, attendanceStatus, transportStatus, assignedDriverId, musterPoint }
 Restaurant         { sessionId, name, addedBy, votes: string[], createdAt }   // votes = array of userIds
 Carpool            { sessionId, driverId, seats, musterPoint, riders: string[] }
 MusterPointConfig  { guildId, name, isActive, createdAt }
-Favorite           { guildId, name, usageCount, lastUsedAt }
+RestaurantOption   { guildId, name, isActive, createdAt }
 ```
 
 **Cosmos DB containers:**
@@ -116,8 +116,9 @@ Favorite           { guildId, name, usageCount, lastUsedAt }
 | `sessions` | `/guildId` |
 | `participants` | `/sessionId` |
 | `restaurants` | `/sessionId` |
+| `carpools` | `/sessionId` |
 | `musterpoints` | `/guildId` |
-| `favorites` | `/guildId` |
+| `restaurantoptions` | `/guildId` |
 
 ## 5. User Journeys
 
@@ -145,7 +146,8 @@ Favorite           { guildId, name, usageCount, lastUsedAt }
 | Create session | Any server member |
 | RSVP / Vote / Add restaurant | Any server member |
 | Lock restaurant / Finalize plan / Edit time / Ping unanswered | Session creator OR Discord admin/mod |
-| Configure muster points | Discord admin/mod only |
+| Configure muster points / Configure restaurant list | Discord admin/mod only |
+| Cancel session | Discord admin/mod only |
 
 ## 7. Discord UX Constraints & Notes
 
@@ -159,9 +161,9 @@ Favorite           { guildId, name, usageCount, lastUsedAt }
 
 | Phase | Features | Target |
 |---|---|---|
-| Phase 1 (MVP) | Session creation, attendance, restaurant voting + favorites, summary panel, lock/finalize, ping unanswered | First release |
-| Phase 2 | Carpool coordination, muster point selection + admin config, time editing | Second release |
-| Phase 3 | Smart reminders (node-cron), auto-assign rides | Third release |
+| Phase 1 (MVP) | Session creation, attendance, restaurant voting with configured list, summary panel, lock/finalize, ping unanswered | ✅ Released |
+| Phase 2 | Carpool coordination, muster point selection + admin config, restaurant list config, time editing | ✅ Released |
+| Phase 3 | Smart reminders (node-cron), auto-assign rides | ✅ Released |
 
 ## 9. Acceptance Criteria
 
