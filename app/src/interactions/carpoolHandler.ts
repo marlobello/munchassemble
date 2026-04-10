@@ -495,10 +495,17 @@ export async function handleCarpoolSwitchButton(
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferUpdate();
   await clearCarpoolRole(session.id, interaction.user.id);
-  await refreshPanelMessage(session, client);
-  await interaction.editReply({ content: '✅ Your carpool role has been cleared.' });
+
+  const [participants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, participants, restaurants, carpools);
+  await interaction.editReply(panel as any);
+  await interaction.followUp({ content: '✅ Your carpool role has been cleared.', flags: MessageFlags.Ephemeral });
 }
 
 /** [🤖 Auto Assign] button — assigns all unmatched riders to drivers. Creator/admin only. */
@@ -521,13 +528,21 @@ export async function handleAutoAssignButton(
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferUpdate();
   const updated = await autoAssignRides(session.id);
-  await refreshPanelMessage(session, client);
+
+  const [participants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, participants, restaurants, carpools);
+  await interaction.editReply(panel as any);
 
   const totalAssigned = updated.reduce((sum, c) => sum + c.riders.length, 0);
-  await interaction.editReply({
+  await interaction.followUp({
     content: `✅ Auto-assign complete! **${totalAssigned}** rider${totalAssigned !== 1 ? 's' : ''} matched across **${updated.length}** driver${updated.length !== 1 ? 's' : ''}.`,
+    flags: MessageFlags.Ephemeral,
   });
 }
 
