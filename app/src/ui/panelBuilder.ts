@@ -198,12 +198,12 @@ function buildJoinCarpoolRows(
   return rows;
 }
 
-/** Row 3 — Transportation (order: Need Ride, Driving Alone, Can Drive) */
+/** Row 3 — Transportation (order: Can Drive, Need Ride, Driving Alone) */
 function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel('🚗 Can Drive').setStyle(ButtonStyle.Success).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.needRide(sessionId)).setLabel('🚌 Need Ride').setStyle(ButtonStyle.Primary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
-    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel('🚗 Can Drive').setStyle(ButtonStyle.Success).setDisabled(locked),
   );
 }
 

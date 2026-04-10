@@ -29,4 +29,5 @@ export const CONTAINERS = {
   carpools: 'carpools',
   musterpoints: 'musterpoints',
   favorites: 'favorites',
+  restaurantoptions: 'restaurantoptions',
 } as const;

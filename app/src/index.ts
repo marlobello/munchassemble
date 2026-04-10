@@ -21,7 +21,6 @@ import {
   handleVoteForButton,
   handleAddSpotButton,
   handleAddSpotSelect,
-  handleAddSpotModal,
   handleLockChoiceButton,
 } from './interactions/restaurantHandler.js';
 import {
@@ -145,8 +144,6 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
     const modal = interaction as ModalSubmitInteraction;
     if (modal.customId === 'modal:create_session') {
       await handleCreateSessionModal(modal, client);
-    } else if (modal.customId.startsWith('modal:add_spot:')) {
-      await handleAddSpotModal(modal, client);
     } else if (modal.customId.startsWith('modal:driving_full:') || modal.customId.startsWith('modal:driving_seats:')) {
       await handleDrivingModal(modal, client);
     } else if (modal.customId.startsWith('modal:edit_time:')) {

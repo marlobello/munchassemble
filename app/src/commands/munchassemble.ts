@@ -9,7 +9,6 @@ import {
   Client,
 } from 'discord.js';
 import { startSession, getActiveSessionForGuild, attachMessageId } from '../services/sessionService.js';
-import { addRestaurant } from '../services/restaurantService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
@@ -58,12 +57,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     .setValue('11:00')
     .setRequired(true);
 
-  const restaurantInput = new TextInputBuilder()
-    .setCustomId('initialRestaurant')
-    .setLabel('Initial restaurant suggestion (optional)')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(false);
-
   const notesInput = new TextInputBuilder()
     .setCustomId('notes')
     .setLabel('Notes (optional, e.g. "quick lunch")')
@@ -74,7 +67,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     new ActionRowBuilder<TextInputBuilder>().addComponents(dateInput),
     new ActionRowBuilder<TextInputBuilder>().addComponents(lunchTimeInput),
     new ActionRowBuilder<TextInputBuilder>().addComponents(departTimeInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(restaurantInput),
     new ActionRowBuilder<TextInputBuilder>().addComponents(notesInput),
   );
 
@@ -89,7 +81,6 @@ export async function handleCreateSessionModal(
   const date = interaction.fields.getTextInputValue('date').trim();
   const lunchTime = interaction.fields.getTextInputValue('lunchTime').trim();
   const departTime = interaction.fields.getTextInputValue('departTime').trim();
-  const initialRestaurant = interaction.fields.getTextInputValue('initialRestaurant').trim();
   const notes = interaction.fields.getTextInputValue('notes').trim();
 
   // Validate date format and ensure it is not in the past
@@ -141,13 +132,9 @@ export async function handleCreateSessionModal(
       notes: notes || undefined,
     });
 
-    const restaurants = initialRestaurant
-      ? [await addRestaurant(session.id, session.guildId, initialRestaurant, interaction.user.id)]
-      : [];
-
     const participants = await getParticipantsForSession(session.id);
     const carpools = await getCarpoolsForSession(session.id);
-    const panel = buildPanel(session, participants, restaurants, carpools);
+    const panel = buildPanel(session, participants, [], carpools);
 
     const message = await interaction.editReply(panel as any);
 

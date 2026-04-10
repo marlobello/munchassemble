@@ -111,6 +111,16 @@ export interface MusterPointConfig {
   createdAt: string;
 }
 
+/** A guild-level restaurant option configured by admins. Users pick from this list only. */
+export interface RestaurantOption {
+  /** Composite: `${guildId}::${name_normalized}` */
+  id: string;
+  guildId: string;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
 /** Frequently-used restaurant name persisted per guild (BR-024). */
 export interface Favorite {
   /** Composite: `${guildId}::${name_normalized}` */

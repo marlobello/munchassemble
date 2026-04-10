@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.41.2.15936",
-      "templateHash": "3004188584827641192"
+      "templateHash": "998836808579806024"
     }
   },
   "parameters": {
@@ -211,7 +211,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "4045907575289716034"
+              "templateHash": "8651036009196866809"
             }
           },
           "parameters": {
@@ -316,6 +316,9 @@
                   },
                   "partitionKey": {
                     "value": "/guildId"
+                  },
+                  "defaultTtl": {
+                    "value": -1
                   }
                 },
                 "template": {
@@ -325,7 +328,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.41.2.15936",
-                      "templateHash": "3503075043998807271"
+                      "templateHash": "3079290063345188526"
                     }
                   },
                   "parameters": {
@@ -352,6 +355,28 @@
                       "metadata": {
                         "description": "Partition key path (e.g. /guildId)"
                       }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
                     }
                   },
                   "resources": [
@@ -360,19 +385,7 @@
                       "apiVersion": "2024-05-15",
                       "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
                       "properties": {
-                        "resource": {
-                          "id": "[parameters('containerName')]",
-                          "partitionKey": {
-                            "paths": [
-                              "[parameters('partitionKey')]"
-                            ],
-                            "kind": "Hash"
-                          },
-                          "indexingPolicy": {
-                            "indexingMode": "consistent",
-                            "automatic": true
-                          }
-                        }
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
                       }
                     }
                   ]
@@ -413,7 +426,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.41.2.15936",
-                      "templateHash": "3503075043998807271"
+                      "templateHash": "3079290063345188526"
                     }
                   },
                   "parameters": {
@@ -440,6 +453,28 @@
                       "metadata": {
                         "description": "Partition key path (e.g. /guildId)"
                       }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
                     }
                   },
                   "resources": [
@@ -448,19 +483,7 @@
                       "apiVersion": "2024-05-15",
                       "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
                       "properties": {
-                        "resource": {
-                          "id": "[parameters('containerName')]",
-                          "partitionKey": {
-                            "paths": [
-                              "[parameters('partitionKey')]"
-                            ],
-                            "kind": "Hash"
-                          },
-                          "indexingPolicy": {
-                            "indexingMode": "consistent",
-                            "automatic": true
-                          }
-                        }
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
                       }
                     }
                   ]
@@ -501,7 +524,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.41.2.15936",
-                      "templateHash": "3503075043998807271"
+                      "templateHash": "3079290063345188526"
                     }
                   },
                   "parameters": {
@@ -528,6 +551,28 @@
                       "metadata": {
                         "description": "Partition key path (e.g. /guildId)"
                       }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
                     }
                   },
                   "resources": [
@@ -536,19 +581,7 @@
                       "apiVersion": "2024-05-15",
                       "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
                       "properties": {
-                        "resource": {
-                          "id": "[parameters('containerName')]",
-                          "partitionKey": {
-                            "paths": [
-                              "[parameters('partitionKey')]"
-                            ],
-                            "kind": "Hash"
-                          },
-                          "indexingPolicy": {
-                            "indexingMode": "consistent",
-                            "automatic": true
-                          }
-                        }
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
                       }
                     }
                   ]
@@ -589,7 +622,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.41.2.15936",
-                      "templateHash": "3503075043998807271"
+                      "templateHash": "3079290063345188526"
                     }
                   },
                   "parameters": {
@@ -616,6 +649,28 @@
                       "metadata": {
                         "description": "Partition key path (e.g. /guildId)"
                       }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
                     }
                   },
                   "resources": [
@@ -624,19 +679,105 @@
                       "apiVersion": "2024-05-15",
                       "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
                       "properties": {
-                        "resource": {
-                          "id": "[parameters('containerName')]",
-                          "partitionKey": {
-                            "paths": [
-                              "[parameters('partitionKey')]"
-                            ],
-                            "kind": "Hash"
-                          },
-                          "indexingPolicy": {
-                            "indexingMode": "consistent",
-                            "automatic": true
-                          }
-                        }
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts', parameters('accountName'))]",
+                "[resourceId('Microsoft.DocumentDB/databaseAccounts/sqlDatabases', parameters('accountName'), parameters('databaseName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2025-04-01",
+              "name": "cosmos-container-restaurantoptions",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "accountName": {
+                    "value": "[parameters('accountName')]"
+                  },
+                  "databaseName": {
+                    "value": "[parameters('databaseName')]"
+                  },
+                  "containerName": {
+                    "value": "restaurantoptions"
+                  },
+                  "partitionKey": {
+                    "value": "/guildId"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "metadata": {
+                    "_generator": {
+                      "name": "bicep",
+                      "version": "0.41.2.15936",
+                      "templateHash": "3079290063345188526"
+                    }
+                  },
+                  "parameters": {
+                    "accountName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Cosmos DB account name"
+                      }
+                    },
+                    "databaseName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Database name"
+                      }
+                    },
+                    "containerName": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Container name"
+                      }
+                    },
+                    "partitionKey": {
+                      "type": "string",
+                      "metadata": {
+                        "description": "Partition key path (e.g. /guildId)"
+                      }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
+                    }
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers",
+                      "apiVersion": "2024-05-15",
+                      "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
+                      "properties": {
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
                       }
                     }
                   ]
@@ -677,7 +818,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.41.2.15936",
-                      "templateHash": "3503075043998807271"
+                      "templateHash": "3079290063345188526"
                     }
                   },
                   "parameters": {
@@ -704,6 +845,28 @@
                       "metadata": {
                         "description": "Partition key path (e.g. /guildId)"
                       }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
                     }
                   },
                   "resources": [
@@ -712,19 +875,7 @@
                       "apiVersion": "2024-05-15",
                       "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
                       "properties": {
-                        "resource": {
-                          "id": "[parameters('containerName')]",
-                          "partitionKey": {
-                            "paths": [
-                              "[parameters('partitionKey')]"
-                            ],
-                            "kind": "Hash"
-                          },
-                          "indexingPolicy": {
-                            "indexingMode": "consistent",
-                            "automatic": true
-                          }
-                        }
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
                       }
                     }
                   ]
@@ -765,7 +916,7 @@
                     "_generator": {
                       "name": "bicep",
                       "version": "0.41.2.15936",
-                      "templateHash": "3503075043998807271"
+                      "templateHash": "3079290063345188526"
                     }
                   },
                   "parameters": {
@@ -792,6 +943,28 @@
                       "metadata": {
                         "description": "Partition key path (e.g. /guildId)"
                       }
+                    },
+                    "defaultTtl": {
+                      "type": "int",
+                      "defaultValue": 0,
+                      "metadata": {
+                        "description": "Default TTL in seconds. -1 = TTL enabled but per-item only. 0 = disabled (default)."
+                      }
+                    }
+                  },
+                  "variables": {
+                    "baseResource": {
+                      "id": "[parameters('containerName')]",
+                      "partitionKey": {
+                        "paths": [
+                          "[parameters('partitionKey')]"
+                        ],
+                        "kind": "Hash"
+                      },
+                      "indexingPolicy": {
+                        "indexingMode": "consistent",
+                        "automatic": true
+                      }
                     }
                   },
                   "resources": [
@@ -800,19 +973,7 @@
                       "apiVersion": "2024-05-15",
                       "name": "[format('{0}/{1}/{2}', parameters('accountName'), parameters('databaseName'), parameters('containerName'))]",
                       "properties": {
-                        "resource": {
-                          "id": "[parameters('containerName')]",
-                          "partitionKey": {
-                            "paths": [
-                              "[parameters('partitionKey')]"
-                            ],
-                            "kind": "Hash"
-                          },
-                          "indexingPolicy": {
-                            "indexingMode": "consistent",
-                            "automatic": true
-                          }
-                        }
+                        "resource": "[if(not(equals(parameters('defaultTtl'), 0)), union(variables('baseResource'), createObject('defaultTtl', parameters('defaultTtl'))), variables('baseResource'))]"
                       }
                     }
                   ]
@@ -991,7 +1152,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.41.2.15936",
-              "templateHash": "16985200555308622359"
+              "templateHash": "14801621939412349041"
             }
           },
           "parameters": {
@@ -1121,6 +1282,22 @@
                         {
                           "name": "DISCORD_GUILD_ID",
                           "value": "[parameters('discordGuildId')]"
+                        },
+                        {
+                          "name": "HEALTH_PORT",
+                          "value": "3000"
+                        }
+                      ],
+                      "probes": [
+                        {
+                          "type": "Liveness",
+                          "httpGet": {
+                            "path": "/health",
+                            "port": 3000
+                          },
+                          "initialDelaySeconds": 15,
+                          "periodSeconds": 30,
+                          "failureThreshold": 3
                         }
                       ]
                     }

@@ -4,9 +4,6 @@ import type {
   StringSelectMenuInteraction,
 } from 'discord.js';
 import {
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
   ActionRowBuilder,
   MessageFlags,
   StringSelectMenuBuilder,
@@ -18,7 +15,7 @@ import {
   voteForRestaurant,
   getRestaurantsForSession,
 } from '../services/restaurantService.js';
-import { getTopFavorites } from '../services/favoriteService.js';
+import { getRestaurantOptions } from '../services/restaurantOptionService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
@@ -70,7 +67,7 @@ export async function handleVoteForButton(
   await interaction.editReply(panel as any);
 }
 
-/** [➕ Add Spot] button — shows favorites not already in session + free-text option (BR-020/BR-024). */
+/** [➕ Add Spot] button — shows configured restaurant options not already in session (BR-020). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const session = await getActiveSessionForGuild(interaction.guildId!);
@@ -79,38 +76,44 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
     return;
   }
 
-  const [favorites, existing] = await Promise.all([
-    getTopFavorites(interaction.guildId!, 23),
+  const [configuredOptions, existing] = await Promise.all([
+    getRestaurantOptions(interaction.guildId!),
     getRestaurantsForSession(session.id),
   ]);
 
-  const existingNames = new Set(existing.map((r) => r.name.toLowerCase()));
-  const newFavorites = favorites.filter((f) => !existingNames.has(f.name.toLowerCase()));
-
-  if (newFavorites.length === 0) {
-    // No favorites to show — go straight to modal (button token consumed here; panel
-    // refresh for this path handled by the fixed refreshPanelMessage in handleAddSpotModal).
-    await showAddSpotModal(interaction, session.id);
+  if (configuredOptions.length === 0) {
+    await interaction.reply({
+      content:
+        '🍽️ No restaurant options configured. An admin can add some with `/munchassemble-config restaurant add`.',
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
-  const options = newFavorites.map((f) =>
-    new StringSelectMenuOptionBuilder().setLabel(f.name).setValue(`fav::${f.name}`),
-  );
-  options.push(
-    new StringSelectMenuOptionBuilder()
-      .setLabel('✏️ Type a new restaurant name...')
-      .setValue('__new__'),
+  const existingNames = new Set(existing.map((r) => r.name.toLowerCase()));
+  const available = configuredOptions.filter((o) => !existingNames.has(o.name.toLowerCase()));
+
+  if (available.length === 0) {
+    await interaction.reply({
+      content: '🍽️ All configured restaurants are already on the list!',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const options = available.map((o) =>
+    new StringSelectMenuOptionBuilder().setLabel(o.name).setValue(o.name),
   );
 
-  const alreadyAdded = existing.length > 0
-    ? `\nAlready on the list: ${existing.map((r) => `**${r.name}**`).join(', ')}`
-    : '';
+  const alreadyAdded =
+    existing.length > 0
+      ? `\nAlready on the list: ${existing.map((r) => `**${r.name}**`).join(', ')}`
+      : '';
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
       .setCustomId(`restaurant:add_select:${session.id}`)
-      .setPlaceholder('Pick a favourite or add new')
+      .setPlaceholder('Pick a restaurant to add')
       .addOptions(options),
   );
 
@@ -125,25 +128,17 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
   });
 }
 
-/** Select menu from the favorites quick-pick (BR-024). */
+/** Select menu from the configured restaurant list (BR-020). */
 export async function handleAddSpotSelect(
   interaction: StringSelectMenuInteraction,
   client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const value = interaction.values[0];
-
-  if (value === '__new__') {
-    // Modal must be the first response — no defer allowed before showModal.
-    // The pending interaction stays in the store and will be picked up by handleAddSpotModal.
-    await showAddSpotModal(interaction, sessionId);
-    return;
-  }
+  const name = interaction.values[0];
 
   // Defer immediately before any DB work to stay within the 3s window.
   await interaction.deferUpdate();
 
-  const name = value.replace(/^fav::/, '');
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
     await interaction.editReply({ content: '⚠️ Session not active.', components: [] });
@@ -176,70 +171,6 @@ export async function handleAddSpotSelect(
   }
 
   await interaction.editReply({ content: `✅ **${name}** added!`, components: [] });
-}
-
-/** Modal for free-text restaurant entry. */
-async function showAddSpotModal(
-  interaction: ButtonInteraction | StringSelectMenuInteraction,
-  sessionId: string,
-): Promise<void> {
-  const modal = new ModalBuilder()
-    .setCustomId(`modal:add_spot:${sessionId}`)
-    .setTitle('➕ Add Restaurant');
-  const nameInput = new TextInputBuilder()
-    .setCustomId('name')
-    .setLabel('Restaurant name')
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true)
-    .setMaxLength(80);
-  modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput));
-  await interaction.showModal(modal);
-}
-
-/** Handle the Add Spot modal submission (BR-020). */
-export async function handleAddSpotModal(
-  interaction: ModalSubmitInteraction,
-  client: Client,
-): Promise<void> {
-  const sessionId = interaction.customId.split(':')[2];
-  const name = interaction.fields.getTextInputValue('name').trim();
-
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
-
-  // Defer before DB work to stay within the 3s window.
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-  try {
-    await addRestaurant(session.id, session.guildId, name, interaction.user.id);
-  } catch (err: unknown) {
-    if (err instanceof DuplicateError) {
-      await interaction.editReply({ content: `⚠️ **${name}** is already on the list!` });
-      return;
-    }
-    throw err;
-  }
-
-  // If the user came via the favorites select → "Type new…" path the original panel
-  // button interaction is still stored. Prefer that for the panel update; fall back to
-  // REST patch (direct modal → no favorites path, or expired token).
-  const pending = takePendingInteraction(`add_spot:${sessionId}`);
-  if (pending?.interaction) {
-    const [participants, restaurants, carpools] = await Promise.all([
-      getParticipantsForSession(session.id),
-      getRestaurantsForSession(session.id),
-      getCarpoolsForSession(session.id),
-    ]);
-    const panel = buildPanel(session, participants, restaurants, carpools);
-    await pending.interaction.editReply(panel as any);
-  } else {
-    await refreshPanelMessage(session, client);
-  }
-
-  await interaction.editReply({ content: `✅ **${name}** added to the vote!` });
 }
 
 /** [🔒 Lock Choice] button — locks the leading restaurant (BR-023). */

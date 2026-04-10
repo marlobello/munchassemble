@@ -104,6 +104,16 @@ module musterContainer 'cosmosContainer.bicep' = {
   }
 }
 
+module restaurantOptionContainer 'cosmosContainer.bicep' = {
+  name: 'cosmos-container-restaurantoptions'
+  params: {
+    accountName: cosmosAccount.name
+    databaseName: database.name
+    containerName: 'restaurantoptions'
+    partitionKey: '/guildId'
+  }
+}
+
 module favoriteContainer 'cosmosContainer.bicep' = {
   name: 'cosmos-container-favorites'
   params: {
