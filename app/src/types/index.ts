@@ -66,6 +66,12 @@ export interface Participant {
   transportStatus?: TransportStatus;
   /** userId of assigned driver (when transportStatus === NeedRide, BR-031). */
   assignedDriverId?: string;
+  /**
+   * Rider's preferred pickup location (transportStatus === NeedRide).
+   * Set to "Any Available" when the rider has no driver preference.
+   * Enables smarter auto-assignment matching.
+   */
+  preferredMusterPoint?: string;
   updatedAt: string;
 }
 

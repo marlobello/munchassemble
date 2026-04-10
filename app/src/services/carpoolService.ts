@@ -95,6 +95,7 @@ export async function unregisterDriver(sessionId: string, driverId: string): Pro
             ...p,
             transportStatus: TransportStatus.NeedRide,
             assignedDriverId: undefined,
+            preferredMusterPoint: 'Any Available',
             updatedAt: new Date().toISOString(),
           });
         }
@@ -148,6 +149,7 @@ export async function requestRide(
         transportStatus: TransportStatus.NeedRide,
         attendanceStatus: autoPromote ? AttendanceStatus.In : existing.attendanceStatus,
         assignedDriverId: undefined,
+        preferredMusterPoint: 'Any Available',
         updatedAt: now,
       }
     : {
@@ -158,6 +160,7 @@ export async function requestRide(
         displayName,
         attendanceStatus: AttendanceStatus.In,
         transportStatus: TransportStatus.NeedRide,
+        preferredMusterPoint: 'Any Available',
         updatedAt: now,
       };
   return upsertParticipant(participant);
@@ -175,6 +178,7 @@ export async function clearCarpoolRole(sessionId: string, userId: string): Promi
       ...p,
       transportStatus: TransportStatus.None,
       assignedDriverId: undefined,
+      preferredMusterPoint: undefined,
       updatedAt: new Date().toISOString(),
     });
   }
@@ -295,6 +299,7 @@ export async function assignRiderToDriver(
         transportStatus: TransportStatus.NeedRide,
         attendanceStatus: autoPromote ? AttendanceStatus.In : existing.attendanceStatus,
         assignedDriverId: driverId,
+        preferredMusterPoint: freshCarpool.musterPoint,
         updatedAt: now,
       }
     : {
@@ -306,6 +311,7 @@ export async function assignRiderToDriver(
         attendanceStatus: AttendanceStatus.In,
         transportStatus: TransportStatus.NeedRide,
         assignedDriverId: driverId,
+        preferredMusterPoint: freshCarpool.musterPoint,
         updatedAt: now,
       };
 
