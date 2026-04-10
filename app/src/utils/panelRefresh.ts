@@ -1,4 +1,5 @@
-import type { Client, TextChannel } from 'discord.js';
+import type { Client } from 'discord.js';
+import { Routes } from 'discord.js';
 import type { LunchSession } from '../types/index.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
@@ -6,15 +7,20 @@ import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
 
 /**
- * Fetches all current session data and edits the live panel message.
- * Used by handlers that operate on ephemeral responses or modals and therefore
- * cannot call interaction.update() on the original panel directly.
+ * Fetches all current session data and edits the live panel message via REST.
  *
- * Uses channel.messages.fetch() + message.edit() instead of client.rest.patch()
- * to ensure discord.js's serialization pipeline handles Components v2 correctly.
+ * Used as a fallback by handlers that cannot carry the original ButtonInteraction
+ * through their flow (e.g. Edit Time modal, Switch, Auto-Assign, and any path
+ * where showModal() consumed the button token before it could be stored).
  *
- * IMPORTANT: Always call interaction.update()/reply()/deferReply() BEFORE this
- * function so the interaction response window is not exceeded.
+ * Uses client.rest.patch() with explicitly serialised components because
+ * discord.js's message.edit() pipeline expects ActionRowBuilder[] in the
+ * components array and does not correctly serialise top-level Components V2
+ * containers (ContainerBuilder). Calling .toJSON() before the REST call
+ * bypasses that limitation.
+ *
+ * IMPORTANT: Always call interaction.deferReply()/reply() BEFORE this function
+ * so the interaction's 3-second acknowledgement window is not exceeded.
  */
 export async function refreshPanelMessage(session: LunchSession, client: Client): Promise<void> {
   if (!session.messageId) return;
@@ -27,14 +33,19 @@ export async function refreshPanelMessage(session: LunchSession, client: Client)
 
   const panel = buildPanel(session, participants, restaurants, carpools);
 
+  // Explicitly serialise ContainerBuilder components before the REST patch.
+  const body = {
+    flags: panel.flags,
+    components: panel.components.map((c: any) =>
+      typeof c.toJSON === 'function' ? c.toJSON() : c,
+    ),
+  };
+
   try {
-    const rawChannel = await client.channels.fetch(session.channelId);
-    if (!rawChannel?.isTextBased()) {
-      console.warn('[panelRefresh] Channel not text-based or not found:', session.channelId);
-      return;
-    }
-    const message = await (rawChannel as TextChannel).messages.fetch(session.messageId);
-    await message.edit(panel as any);
+    await client.rest.patch(
+      Routes.channelMessage(session.channelId, session.messageId),
+      { body },
+    );
   } catch (err) {
     console.error('[panelRefresh] Failed to refresh panel message:', err);
   }

@@ -34,40 +34,78 @@ sequenceDiagram
 
 ---
 
-## Pattern B — Ephemeral → Panel Refresh
+## Pattern B — Ephemeral → Panel Refresh (via stored interaction)
 
-Used by: Restaurant Vote, Add Restaurant (new name), Can Drive (modal), Need Ride select.
+Used by: Add Restaurant (from favorites select), Can Drive (from muster point select).
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Discord
     participant Handler as Interaction Handler
+    participant Store as pendingInteractions
     participant Service as Service Layer
     participant DB as Cosmos DB
     participant Panel as Session Panel
 
-    User->>Discord: clicks button (step 1)
+    User->>Discord: clicks panel button (step 1)
     Discord->>Handler: POST interaction #1 (3s window)
-    Handler->>User: interaction.reply({ ephemeral: true, content: menu/modal prompt })
+    Handler->>Handler: deferUpdate() — keeps token alive
+    Handler->>Store: storePendingInteraction(key, interaction)
+    Handler->>User: interaction.followUp({ ephemeral: true, select menu })
 
-    User->>Discord: submits selection/modal (step 2)
+    User->>Discord: submits selection (step 2)
     Discord->>Handler: POST interaction #2 (3s window)
     Handler->>Service: apply state change
     Service->>DB: write updated record(s)
-    Handler->>User: interaction.update("✅ Done!") [closes ephemeral]
-
-    Note over Handler,Panel: Panel refresh happens AFTER interaction is acked (outside 3s window OK — uses channel.messages.fetch + message.edit)
+    Handler->>Handler: deferUpdate() on select interaction
+    Handler->>Store: takePendingInteraction(key) → original button interaction
     Handler->>DB: read full session snapshot
     Handler->>Handler: buildPanel(session, participants, restaurants, carpools)
-    Handler->>Discord: channel.messages.fetch(messageId) → message.edit(panel)
-    Discord->>Panel: edit message in-place
-    Panel-->>User: panel now reflects change
+    Handler->>Discord: storedInteraction.editReply(panel)
+    Discord->>Panel: edit message in-place (interaction webhook — same endpoint as Pattern A)
+    Panel-->>User: panel updates immediately
+    Handler->>User: interaction.editReply("✅ Done!") [closes ephemeral]
 ```
 
-> **Why `message.edit` not `interaction.update` for refresh?**
-> By the time the second interaction is acked, the first interaction's 3-second window is long gone.
-> `channel.messages.fetch()` + `message.edit()` works at any time after the interaction chain completes.
+> **Why this works:** `deferUpdate()` on the original panel button keeps the interaction webhook token alive for 15 minutes. Subsequent `editReply()` calls on that stored interaction use the exact same webhook endpoint as Pattern A — the proven path for Components V2 panel updates.
+
+---
+
+## Pattern C — Modal → Panel Refresh (REST fallback)
+
+Used by: Add Restaurant (direct modal — no favorites), Can Drive "Other…" path, Edit Time, Carpool Switch, Auto-Assign.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Discord
+    participant Handler as Interaction Handler
+    participant Store as pendingInteractions
+    participant Service as Service Layer
+    participant DB as Cosmos DB
+    participant Panel as Session Panel
+
+    User->>Discord: clicks panel button
+    Discord->>Handler: POST interaction #1 (3s window)
+    Handler->>User: showModal(…) — button token consumed
+
+    User->>Discord: submits modal
+    Discord->>Handler: POST interaction #2 (ModalSubmitInteraction)
+    Handler->>Service: apply state change
+    Service->>DB: write updated record(s)
+    Handler->>Handler: deferReply({ ephemeral: true })
+    Handler->>Store: takePendingInteraction(key) — may return null (no prior defer)
+    Handler->>DB: read full session snapshot
+    Handler->>Handler: buildPanel(session, participants, restaurants, carpools)
+    Handler->>Handler: body = { flags, components: panel.components.map(c => c.toJSON()) }
+    Handler->>Discord: client.rest.patch(channelMessage(channelId, messageId), body)
+    Discord->>Panel: edit message in-place
+    Panel-->>User: panel updates
+    Handler->>User: interaction.editReply("✅ Done!")
+```
+
+> **Why `.toJSON()` is required:** `discord.js message.edit()` expects `ActionRowBuilder[]` in the components array and silently drops top-level `ContainerBuilder` instances (Components V2). Explicitly serialising with `.toJSON()` before the REST call produces the correct API payload.
 
 ---
 
@@ -112,30 +150,42 @@ sequenceDiagram
     participant Sam
     participant Bot
     participant carpoolHandler
+    participant musterService
     participant carpoolService
+    participant pendingStore as pendingInteractions
     participant DB
 
     Sam->>Bot: clicks 🚗 Can Drive
-    Bot->>carpoolHandler: handleCanDriveButton(interaction)
+    Bot->>carpoolHandler: handleDrivingButton(interaction, client)
     carpoolHandler->>DB: getParticipant(sessionId, Sam)
     alt attendanceStatus === out OR maybe
         carpoolHandler->>Sam: ephemeral "❌ Blocked (state rules)"
     else attendanceStatus === in OR unset
-        carpoolHandler->>Sam: showModal(seats, pickupLocation)
-        Sam->>Bot: submits modal
-        Bot->>carpoolHandler: handleCanDriveModal(interaction)
-        carpoolHandler->>carpoolService: registerDriver(sessionId, Sam, seats, location)
-        carpoolService->>DB: getParticipant → check current transport
-        alt was NeedRide + had assignedDriverId
-            carpoolService->>DB: remove Sam from old driver's riders[]
-        end
-        carpoolService->>DB: upsert Carpool { id: sessionId::Sam, driverId: Sam, seats, location }
+        carpoolHandler->>musterService: getMusterPoints(guildId)
+        carpoolHandler->>carpoolHandler: deferUpdate() — keep panel token alive
+        carpoolHandler->>pendingStore: storePendingInteraction("driving:sessionId", interaction)
+        carpoolHandler->>Sam: followUp ephemeral → select menu (muster points + "Other…")
+
+        Sam->>Bot: selects a known muster point (e.g. "Garage A")
+        Bot->>carpoolHandler: handleDrivingMusterSelect(interaction)
+        carpoolHandler->>pendingStore: setPendingMusterPoint("driving:sessionId", "Garage A")
+        carpoolHandler->>Sam: showModal(seats-only, title: "🚗 Can Drive — Garage A")
+
+        Sam->>Bot: submits seats modal
+        Bot->>carpoolHandler: handleDrivingModal(interaction, client) [driving_seats]
+        carpoolHandler->>pendingStore: takePendingInteraction("driving:sessionId") → { interaction, musterPoint: "Garage A" }
+        carpoolHandler->>carpoolService: registerDriver(sessionId, Sam, seats, "Garage A")
+        carpoolService->>DB: upsert Carpool { id: sessionId::Sam, driverId: Sam, seats, musterPoint }
         carpoolService->>DB: updateParticipant(transportStatus=CanDrive)
-        carpoolHandler->>Sam: interaction.update("✅ You're registered as a driver…")
-        carpoolHandler->>Bot: refreshPanelMessage(…)
-        Bot->>Discord: message.edit(panel)
+        carpoolHandler->>DB: read full session snapshot
+        carpoolHandler->>carpoolHandler: buildPanel(…)
+        carpoolHandler->>Bot: storedInteraction.editReply(panel)
+        Bot->>Sam: panel updates immediately
+        carpoolHandler->>Sam: ephemeral "✅ You're registered as a driver…"
     end
 ```
+
+**"Other…" path (free-text muster):** Sam picks "✏️ Type a custom location…" → full modal (seats + muster) → on submit, stored interaction is retrieved and panel updated via `editReply`; falls back to `refreshPanelMessage` if the token expired.
 
 ---
 

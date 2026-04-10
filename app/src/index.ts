@@ -33,6 +33,7 @@ import {
 import {
   handleDrivingButton,
   handleDrivingModal,
+  handleDrivingMusterSelect,
   handleDrivingAloneButton,
   handleNeedRideButton,
   handleJoinCarpoolButton,
@@ -145,7 +146,7 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       await handleCreateSessionModal(modal, client);
     } else if (modal.customId.startsWith('modal:add_spot:')) {
       await handleAddSpotModal(modal, client);
-    } else if (modal.customId.startsWith('modal:driving:')) {
+    } else if (modal.customId.startsWith('modal:driving_full:') || modal.customId.startsWith('modal:driving_seats:')) {
       await handleDrivingModal(modal, client);
     } else if (modal.customId.startsWith('modal:edit_time:')) {
       await handleEditTimeModal(modal, client);
@@ -165,7 +166,7 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       else if (action === 'add') await handleAddSpotButton(btn);
       else if (action === 'lock') await handleLockChoiceButton(btn);
     } else if (namespace === 'carpool') {
-      if (action === 'driving') await handleDrivingButton(btn);
+      if (action === 'driving') await handleDrivingButton(btn, client);
       else if (action === 'driving_alone') await handleDrivingAloneButton(btn, client);
       else if (action === 'need_ride') await handleNeedRideButton(btn, client);
       else if (action === 'join') await handleJoinCarpoolButton(btn, client);
@@ -186,6 +187,8 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
 
     if (namespace === 'restaurant' && action === 'add_select') {
       await handleAddSpotSelect(select, client);
+    } else if (namespace === 'carpool' && action === 'driving_muster') {
+      await handleDrivingMusterSelect(select);
     }
     return;
   }

@@ -27,6 +27,7 @@ import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { voteBlockedReason } from '../utils/stateRules.js';
 import { getParticipant } from '../db/repositories/participantRepo.js';
 import { DuplicateError } from '../utils/errors.js';
+import { storePendingInteraction, takePendingInteraction } from '../utils/pendingInteractions.js';
 import type { Client } from 'discord.js';
 
 /**
@@ -87,7 +88,8 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
   const newFavorites = favorites.filter((f) => !existingNames.has(f.name.toLowerCase()));
 
   if (newFavorites.length === 0) {
-    // No favorites to show — go straight to modal
+    // No favorites to show — go straight to modal (button token consumed here; panel
+    // refresh for this path handled by the fixed refreshPanelMessage in handleAddSpotModal).
     await showAddSpotModal(interaction, session.id);
     return;
   }
@@ -111,7 +113,12 @@ export async function handleAddSpotButton(interaction: ButtonInteraction): Promi
       .setPlaceholder('Pick a favourite or add new')
       .addOptions(options),
   );
-  await interaction.reply({
+
+  // Defer the panel button and store it so the select handler can update the panel directly.
+  await interaction.deferUpdate();
+  storePendingInteraction(`add_spot:${sessionId}`, interaction);
+
+  await interaction.followUp({
     content: `🍽️ Pick a spot:${alreadyAdded}`,
     components: [row],
     flags: MessageFlags.Ephemeral,
@@ -127,12 +134,13 @@ export async function handleAddSpotSelect(
   const value = interaction.values[0];
 
   if (value === '__new__') {
-    // Modal must be the first (and only) response — no defer allowed before showModal
+    // Modal must be the first response — no defer allowed before showModal.
+    // The pending interaction stays in the store and will be picked up by handleAddSpotModal.
     await showAddSpotModal(interaction, sessionId);
     return;
   }
 
-  // Defer immediately before any DB work to stay within the 3s window
+  // Defer immediately before any DB work to stay within the 3s window.
   await interaction.deferUpdate();
 
   const name = value.replace(/^fav::/, '');
@@ -152,7 +160,21 @@ export async function handleAddSpotSelect(
     throw err;
   }
 
-  await refreshPanelMessage(session, client);
+  // Update the panel via the stored original button interaction (interaction webhook —
+  // always works for Components V2). Fall back to REST patch if the token expired.
+  const pending = takePendingInteraction(`add_spot:${sessionId}`);
+  if (pending?.interaction) {
+    const [participants, restaurants, carpools] = await Promise.all([
+      getParticipantsForSession(session.id),
+      getRestaurantsForSession(session.id),
+      getCarpoolsForSession(session.id),
+    ]);
+    const panel = buildPanel(session, participants, restaurants, carpools);
+    await pending.interaction.editReply(panel as any);
+  } else {
+    await refreshPanelMessage(session, client);
+  }
+
   await interaction.editReply({ content: `✅ **${name}** added!`, components: [] });
 }
 
@@ -188,7 +210,7 @@ export async function handleAddSpotModal(
     return;
   }
 
-  // Defer before DB work to stay within the 3s window
+  // Defer before DB work to stay within the 3s window.
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
@@ -201,7 +223,22 @@ export async function handleAddSpotModal(
     throw err;
   }
 
-  await refreshPanelMessage(session, client);
+  // If the user came via the favorites select → "Type new…" path the original panel
+  // button interaction is still stored. Prefer that for the panel update; fall back to
+  // REST patch (direct modal → no favorites path, or expired token).
+  const pending = takePendingInteraction(`add_spot:${sessionId}`);
+  if (pending?.interaction) {
+    const [participants, restaurants, carpools] = await Promise.all([
+      getParticipantsForSession(session.id),
+      getRestaurantsForSession(session.id),
+      getCarpoolsForSession(session.id),
+    ]);
+    const panel = buildPanel(session, participants, restaurants, carpools);
+    await pending.interaction.editReply(panel as any);
+  } else {
+    await refreshPanelMessage(session, client);
+  }
+
   await interaction.editReply({ content: `✅ **${name}** added to the vote!` });
 }
 
