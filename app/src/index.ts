@@ -36,6 +36,7 @@ import {
   handleDrivingMusterSelect,
   handleDrivingAloneButton,
   handleNeedRideButton,
+  handleNeedRideSelect,
   handleJoinCarpoolButton,
   handleCarpoolSwitchButton,
   handleAutoAssignButton,
@@ -189,6 +190,8 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       await handleAddSpotSelect(select, client);
     } else if (namespace === 'carpool' && action === 'driving_muster') {
       await handleDrivingMusterSelect(select);
+    } else if (namespace === 'carpool' && action === 'need_ride_select') {
+      await handleNeedRideSelect(select, client);
     }
     return;
   }

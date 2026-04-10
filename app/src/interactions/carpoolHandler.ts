@@ -1,6 +1,7 @@
 import {
   ActionRowBuilder,
   ButtonInteraction,
+  GuildMember,
   MessageFlags,
   ModalBuilder,
   ModalSubmitInteraction,
@@ -134,11 +135,16 @@ export async function handleDrivingButton(
   const options = musterPoints.map((mp) =>
     new StringSelectMenuOptionBuilder().setLabel(mp.name).setValue(`mp::${mp.name}`),
   );
-  options.push(
-    new StringSelectMenuOptionBuilder()
-      .setLabel('✏️ Type a custom pickup location…')
-      .setValue('__other__'),
-  );
+
+  if (options.length === 0) {
+    // No muster points configured — prompt admin to set them up
+    await interaction.followUp({
+      content: '⚠️ No pickup locations are configured. Ask an admin to run `/munchassemble-config` to add muster points.',
+      flags: MessageFlags.Ephemeral,
+    });
+    takePendingInteraction(`driving:${sessionId}`);
+    return;
+  }
 
   const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
@@ -165,38 +171,9 @@ export async function handleDrivingMusterSelect(
   interaction: StringSelectMenuInteraction,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const value = interaction.values[0];
+  const musterName = interaction.values[0].replace(/^mp::/, '');
 
-  if (value === '__other__') {
-    const modal = new ModalBuilder()
-      .setCustomId(`modal:driving_full:${sessionId}`)
-      .setTitle('🚗 Can Drive');
-
-    modal.addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId('seats')
-          .setLabel('Seats available (excluding yourself)')
-          .setStyle(TextInputStyle.Short)
-          .setValue('3')
-          .setRequired(true),
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId('musterPoint')
-          .setLabel('Your pickup location')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('e.g. Garage A')
-          .setRequired(true),
-      ),
-    );
-
-    await interaction.showModal(modal);
-    return;
-  }
-
-  // Known muster point — attach to the pending entry, then ask for seats.
-  const musterName = value.replace(/^mp::/, '');
+  // Attach the muster point to the pending entry, then show a seats-only modal.
   setPendingMusterPoint(`driving:${sessionId}`, musterName);
 
   const modal = new ModalBuilder()
@@ -290,7 +267,15 @@ export async function handleDrivingModal(
   }
 }
 
-/** [🚌 Need Ride] button — toggles NeedRide status directly on the panel (no ephemeral). */
+/**
+ * [🚌 Need Ride] button — marks the user as needing a ride.
+ * customId: carpool:need_ride:<sessionId>
+ *
+ * Flow:
+ *   - Toggle OFF: clears ride request and updates panel.
+ *   - Toggle ON: registers ride request, updates panel, then if drivers are available
+ *     shows an ephemeral select menu (available drivers + "Any available").
+ */
 export async function handleNeedRideButton(
   interaction: ButtonInteraction,
   client: Client,
@@ -314,31 +299,131 @@ export async function handleNeedRideButton(
     }
   }
 
-  // Acknowledge immediately before DB work
   await interaction.deferUpdate();
 
-  const member = interaction.member as import('discord.js').GuildMember;
+  const member = interaction.member as GuildMember;
 
   if (isCurrentlyNeedRide) {
-    // Toggle off — clear the ride request
+    // Toggle off — clear the ride request and update the panel
     await clearCarpoolRole(session.id, interaction.user.id);
-  } else {
-    // Toggle on — register as needing a ride
-    await requestRide(
-      session.id,
-      interaction.user.id,
-      interaction.user.username,
-      member?.displayName ?? interaction.user.displayName,
-    );
+    const [updatedParticipants, restaurants, carpools] = await Promise.all([
+      getParticipantsForSession(session.id),
+      getRestaurantsForSession(session.id),
+      getCarpoolsForSession(session.id),
+    ]);
+    const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+    await interaction.editReply(panel as any);
+    return;
   }
 
-  const [updatedParticipants, restaurants, carpools] = await Promise.all([
+  // Toggle on — register as needing a ride
+  await requestRide(
+    session.id,
+    interaction.user.id,
+    interaction.user.username,
+    member?.displayName ?? interaction.user.displayName,
+  );
+
+  // Fetch fresh data and update the panel immediately
+  const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+  const panel = buildPanel(session, participants, restaurants, carpools);
   await interaction.editReply(panel as any);
+
+  // If drivers are available, show an ephemeral select for driver preference
+  const available = carpools.filter((c) => c.seats > c.riders.length);
+  if (available.length === 0) return;
+
+  // Store the panel interaction so the driver select handler can refresh the panel
+  storePendingInteraction(`need_ride:${sessionId}`, interaction);
+
+  const options = available.map((c) => {
+    const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? 'Driver';
+    const seatsLeft = c.seats - c.riders.length;
+    return new StringSelectMenuOptionBuilder()
+      .setLabel(`🚗 ${driverName} — ${c.musterPoint} (${seatsLeft} seat${seatsLeft !== 1 ? 's' : ''})`.slice(0, 100))
+      .setValue(`driver::${c.driverId}`);
+  });
+  options.push(
+    new StringSelectMenuOptionBuilder().setLabel('🎲 Any available').setValue('any'),
+  );
+
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`carpool:need_ride_select:${sessionId}`)
+      .setPlaceholder('Pick a driver or leave it open')
+      .addOptions(options),
+  );
+
+  await interaction.followUp({
+    content: '🚌 Drivers are available! Pick one or choose "Any available":',
+    components: [row],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/**
+ * Select menu for driver preference in the Need Ride flow.
+ * customId: carpool:need_ride_select:<sessionId>
+ * Values: 'any' | 'driver::<driverId>'
+ */
+export async function handleNeedRideSelect(
+  interaction: StringSelectMenuInteraction,
+  client: Client,
+): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const value = interaction.values[0];
+
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferUpdate();
+
+  if (value !== 'any') {
+    const driverId = value.replace(/^driver::/, '');
+    const member = interaction.member as GuildMember;
+    try {
+      await assignRiderToDriver(
+        session.id,
+        interaction.user.id,
+        driverId,
+        interaction.user.username,
+        member?.displayName ?? interaction.user.displayName,
+      );
+    } catch (err) {
+      await interaction.editReply({
+        content: `❌ ${err instanceof Error ? err.message : 'Could not join that carpool.'}`,
+        components: [],
+      });
+      return;
+    }
+  }
+
+  // Refresh the panel with the updated carpool assignment
+  const pending = takePendingInteraction(`need_ride:${sessionId}`);
+  const [participants, restaurants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getRestaurantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(session, participants, restaurants, carpools);
+  if (pending?.interaction) {
+    await pending.interaction.editReply(panel as any);
+  } else {
+    await refreshPanelMessage(session, client);
+  }
+
+  const msg =
+    value === 'any'
+      ? "✅ You're marked as needing a ride. You'll be auto-assigned to a driver soon!"
+      : '✅ You\'re assigned to a driver!';
+  await interaction.editReply({ content: msg, components: [] });
 }
 
 /**

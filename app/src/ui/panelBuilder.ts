@@ -198,12 +198,12 @@ function buildJoinCarpoolRows(
   return rows;
 }
 
-/** Row 3 — Transportation */
+/** Row 3 — Transportation (order: Need Ride, Driving Alone, Can Drive) */
 function buildTransportRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel('🚗 Can Drive').setStyle(ButtonStyle.Success).setDisabled(locked),
-    new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.needRide(sessionId)).setLabel('🚌 Need Ride').setStyle(ButtonStyle.Primary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.drivingAlone(sessionId)).setLabel('🚘 Driving Alone').setStyle(ButtonStyle.Secondary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.driving(sessionId)).setLabel('🚗 Can Drive').setStyle(ButtonStyle.Success).setDisabled(locked),
   );
 }
 
@@ -260,30 +260,19 @@ export function buildPanel(
     .addActionRowComponents(buildAttendanceRow(session.id))
     .addSeparatorComponents(sep())
     // ── Restaurant ──
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Restaurant ──**'))
-    .addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked));
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Restaurant ──**'));
 
-  // Inline vote buttons — one per restaurant (no ephemeral needed)
+  // Inline vote buttons first, then management row
   for (const voteRow of buildVoteButtonRows(session.id, restaurants, restaurantLocked)) {
     container.addActionRowComponents(voteRow);
   }
+  container.addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked));
 
   container
     .addSeparatorComponents(sep())
     // ── Transportation ──
     .addTextDisplayComponents(new TextDisplayBuilder().setContent('**── Transportation ──**'))
     .addActionRowComponents(buildTransportRow(session.id, false));
-
-  // Inline join-carpool buttons — one per driver with open seats (no ephemeral needed)
-  const joinRows = buildJoinCarpoolRows(session.id, carpools, participants);
-  if (joinRows.length > 0) {
-    container.addTextDisplayComponents(
-      new TextDisplayBuilder().setContent('*Pick a driver to ride with:*'),
-    );
-    for (const joinRow of joinRows) {
-      container.addActionRowComponents(joinRow);
-    }
-  }
 
   container
     .addSeparatorComponents(sep())
