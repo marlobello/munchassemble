@@ -67,7 +67,7 @@ export async function handleVoteForButton(
   await interaction.editReply(panel as any);
 }
 
-/** [➕ Add Spot] button — shows configured restaurant options not already in session (BR-020). */
+/** [➕ Suggest Spot] button — shows configured restaurant options not already in session (BR-020). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
   const session = await getActiveSessionForGuild(interaction.guildId!);

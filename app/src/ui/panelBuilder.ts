@@ -140,7 +140,7 @@ function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> 
 /** Row 2 — Restaurant management (Add Spot + Lock Choice; votes are inline per restaurant) */
 function buildRestaurantRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(BTN.addSpot(sessionId)).setLabel('➕ Add Spot').setStyle(ButtonStyle.Secondary).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.addSpot(sessionId)).setLabel('➕ Suggest Spot').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.lockChoice(sessionId)).setLabel('🔒 Lock Choice').setStyle(ButtonStyle.Danger).setDisabled(locked),
   );
 }
