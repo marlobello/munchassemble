@@ -16,10 +16,26 @@ const mockSession: LunchSession = {
   updatedAt: new Date().toISOString(),
 };
 
-function makeMember(flags: bigint[]) {
+function makeMember(
+  flags: bigint[],
+  guildRoles: { id: string; name: string }[] = [],
+  memberRoleIds: string[] = [],
+) {
   return {
     permissions: {
       has: (flag: bigint) => flags.includes(flag),
+    },
+    guild: {
+      roles: {
+        cache: {
+          find: (fn: (r: { id: string; name: string }) => boolean) => guildRoles.find(fn),
+        },
+      },
+    },
+    roles: {
+      cache: {
+        has: (id: string) => memberRoleIds.includes(id),
+      },
     },
   } as any;
 }
@@ -39,6 +55,11 @@ describe('isCreatorOrAdmin', () => {
     expect(isCreatorOrAdmin('user-other', member, mockSession)).toBe(true);
   });
 
+  it('returns true for a member with the Mod role', () => {
+    const member = makeMember([], [{ id: 'role-mod', name: 'Mod' }], ['role-mod']);
+    expect(isCreatorOrAdmin('user-other', member, mockSession)).toBe(true);
+  });
+
   it('returns false for a regular member who is not the creator', () => {
     const member = makeMember([]);
     expect(isCreatorOrAdmin('user-other', member, mockSession)).toBe(false);
@@ -52,6 +73,24 @@ describe('isCreatorOrAdmin', () => {
 describe('isAdmin', () => {
   it('returns true for Administrator', () => {
     expect(isAdmin(makeMember([PermissionFlagsBits.Administrator]))).toBe(true);
+  });
+
+  it('returns true for ManageGuild', () => {
+    expect(isAdmin(makeMember([PermissionFlagsBits.ManageGuild]))).toBe(true);
+  });
+
+  it('returns true for a member with the "mod" role (case-insensitive)', () => {
+    const member = makeMember([], [{ id: 'role-mod', name: 'MOD' }], ['role-mod']);
+    expect(isAdmin(member)).toBe(true);
+  });
+
+  it('returns false when mod role exists in guild but member does not hold it', () => {
+    const member = makeMember([], [{ id: 'role-mod', name: 'mod' }], []);
+    expect(isAdmin(member)).toBe(false);
+  });
+
+  it('returns false for a regular member with no relevant permissions or roles', () => {
+    expect(isAdmin(makeMember([]))).toBe(false);
   });
 
   it('returns false for null member', () => {

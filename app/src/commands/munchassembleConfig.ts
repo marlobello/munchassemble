@@ -2,16 +2,15 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   MessageFlags,
-  PermissionFlagsBits,
 } from 'discord.js';
 import { getMusterPoints, addMusterPoint, removeMusterPoint } from '../services/musterService.js';
 import { getRestaurantOptions, addRestaurantOption, removeRestaurantOption } from '../services/restaurantOptionService.js';
 import { getActiveSessionForGuild, completeSession } from '../services/sessionService.js';
+import { isAdmin, getMember } from '../utils/permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('munchassemble-config')
-  .setDescription('Configure Munch Assemble settings for this server (admin only)')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+  .setDescription('Configure Munch Assemble settings for this server (admin or mod only)')
   .addSubcommandGroup((group) =>
     group
       .setName('session')
@@ -72,6 +71,14 @@ export const data = new SlashCommandBuilder()
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!isAdmin(getMember(interaction))) {
+    await interaction.reply({
+      content: '❌ You need the **Mod** role or server admin permissions to use this command.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   const guildId = interaction.guildId!;
   const group = interaction.options.getSubcommandGroup();
   const sub = interaction.options.getSubcommand();
