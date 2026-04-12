@@ -212,5 +212,47 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
   await interaction.editReply(panel as any);
 }
 
+/** [🎲 Tie Break] button — randomly picks a winner among tied restaurants (Issue #3). */
+export async function handleTieBreakButton(interaction: ButtonInteraction): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
+    await interaction.reply({
+      content: '🚫 Only the session creator or a server admin can break a tie.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const restaurants = await getRestaurantsForSession(session.id);
+  const maxVotes = Math.max(...restaurants.map((r) => r.votes.length));
+  const tied = restaurants.filter((r) => r.votes.length === maxVotes && maxVotes > 0);
+
+  if (tied.length < 2) {
+    await interaction.reply({
+      content: '⚠️ No tie to break — use 🔒 Lock Choice instead.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.deferUpdate();
+
+  const winner = tied[Math.floor(Math.random() * tied.length)];
+  const updatedSession = await lockRestaurant(session, winner.id);
+
+  const [participants, carpools] = await Promise.all([
+    getParticipantsForSession(session.id),
+    getCarpoolsForSession(session.id),
+  ]);
+  const panel = buildPanel(updatedSession, participants, restaurants, carpools);
+  await interaction.editReply(panel as any);
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

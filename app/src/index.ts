@@ -22,6 +22,7 @@ import {
   handleAddSpotButton,
   handleAddSpotSelect,
   handleLockChoiceButton,
+  handleTieBreakButton,
 } from './interactions/restaurantHandler.js';
 import {
   handleFinalizeButton,
@@ -163,6 +164,7 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       if (action === 'vote_for') await handleVoteForButton(btn, client);
       else if (action === 'add') await handleAddSpotButton(btn);
       else if (action === 'lock') await handleLockChoiceButton(btn);
+      else if (action === 'tiebreak') await handleTieBreakButton(btn);
     } else if (namespace === 'carpool') {
       if (action === 'driving') await handleDrivingButton(btn, client);
       else if (action === 'driving_alone') await handleDrivingAloneButton(btn, client);

@@ -138,17 +138,48 @@ describe('buildPanel (Components v2)', () => {
     expect(ids).toContain(BTN.needRide('sess-1'));
   });
 
-  it('admin row has correct button customIds', () => {
+  it('restaurant row shows "Lock Choice" when there is a clear leader', () => {
     const { components } = buildPanel(mockSession, mockParticipants, mockRestaurants);
+    // mockRestaurants: Chipotle=2 votes, Local Table=1 vote — clear leader
     const rows = getActionRows(components);
-    const adminRow = rows.find((r: any) =>
-      r.components.some((b: any) => b.custom_id === BTN.finalize('sess-1')),
+    const restaurantRow = rows.find((r: any) =>
+      r.components.some((b: any) => b.custom_id === BTN.addSpot('sess-1')),
     );
-    expect(adminRow).toBeDefined();
-    const ids = adminRow.components.map((b: any) => b.custom_id);
-    expect(ids).toContain(BTN.finalize('sess-1'));
-    expect(ids).toContain(BTN.ping('sess-1'));
-    expect(ids).toContain(BTN.editTime('sess-1'));
+    expect(restaurantRow).toBeDefined();
+    const ids = restaurantRow.components.map((b: any) => b.custom_id);
+    expect(ids).toContain(BTN.lockChoice('sess-1'));
+    expect(ids).not.toContain(BTN.tieBreak('sess-1'));
+  });
+
+  it('restaurant row shows "Tie Break" when two restaurants are tied with votes > 0', () => {
+    const tiedRestaurants = [
+      { ...mockRestaurants[0], votes: ['user-1'] }, // 1 vote
+      { ...mockRestaurants[1], votes: ['user-2'] }, // 1 vote — tied
+    ];
+    const { components } = buildPanel(mockSession, mockParticipants, tiedRestaurants);
+    const rows = getActionRows(components);
+    const restaurantRow = rows.find((r: any) =>
+      r.components.some((b: any) => b.custom_id === BTN.addSpot('sess-1')),
+    );
+    expect(restaurantRow).toBeDefined();
+    const ids = restaurantRow.components.map((b: any) => b.custom_id);
+    expect(ids).toContain(BTN.tieBreak('sess-1'));
+    expect(ids).not.toContain(BTN.lockChoice('sess-1'));
+  });
+
+  it('restaurant row shows "Lock Choice" (not Tie Break) when all restaurants have 0 votes', () => {
+    const noVoteRestaurants = [
+      { ...mockRestaurants[0], votes: [] },
+      { ...mockRestaurants[1], votes: [] },
+    ];
+    const { components } = buildPanel(mockSession, mockParticipants, noVoteRestaurants);
+    const rows = getActionRows(components);
+    const restaurantRow = rows.find((r: any) =>
+      r.components.some((b: any) => b.custom_id === BTN.addSpot('sess-1')),
+    );
+    const ids = restaurantRow.components.map((b: any) => b.custom_id);
+    expect(ids).toContain(BTN.lockChoice('sess-1'));
+    expect(ids).not.toContain(BTN.tieBreak('sess-1'));
   });
 });
 

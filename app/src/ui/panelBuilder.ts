@@ -23,6 +23,7 @@ export const BTN = {
   voteFor: (sid: string, rid: string) => `restaurant:vote_for:${sid}:${rid}`,
   addSpot: (sid: string) => `restaurant:add:${sid}`,
   lockChoice: (sid: string) => `restaurant:lock:${sid}`,
+  tieBreak: (sid: string) => `restaurant:tiebreak:${sid}`,
   driving: (sid: string) => `carpool:driving:${sid}`,
   needRide: (sid: string) => `carpool:need_ride:${sid}`,
   /** Inline join a specific carpool driver — no ephemeral needed */
@@ -137,11 +138,34 @@ function buildAttendanceRow(sessionId: string): ActionRowBuilder<ButtonBuilder> 
   );
 }
 
-/** Row 2 — Restaurant management (Add Spot + Lock Choice; votes are inline per restaurant) */
-function buildRestaurantRow(sessionId: string, locked: boolean): ActionRowBuilder<ButtonBuilder> {
+/** Returns true when 2+ restaurants share the top vote count and that count > 0. */
+function isTied(restaurants: Restaurant[]): boolean {
+  if (restaurants.length < 2) return false;
+  const max = Math.max(...restaurants.map((r) => r.votes.length));
+  if (max === 0) return false;
+  return restaurants.filter((r) => r.votes.length === max).length >= 2;
+}
+
+/** Row 2 — Restaurant management (Suggest Spot + Lock Choice / Tie Break) */
+function buildRestaurantRow(
+  sessionId: string,
+  locked: boolean,
+  restaurants: Restaurant[],
+): ActionRowBuilder<ButtonBuilder> {
+  const tied = !locked && isTied(restaurants);
+  const lockBtn = tied
+    ? new ButtonBuilder()
+        .setCustomId(BTN.tieBreak(sessionId))
+        .setLabel('🎲 Tie Break')
+        .setStyle(ButtonStyle.Secondary)
+    : new ButtonBuilder()
+        .setCustomId(BTN.lockChoice(sessionId))
+        .setLabel('🔒 Lock Choice')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(locked);
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(BTN.addSpot(sessionId)).setLabel('➕ Suggest Spot').setStyle(ButtonStyle.Secondary).setDisabled(locked),
-    new ButtonBuilder().setCustomId(BTN.lockChoice(sessionId)).setLabel('🔒 Lock Choice').setStyle(ButtonStyle.Danger).setDisabled(locked),
+    lockBtn,
   );
 }
 
@@ -266,7 +290,7 @@ export function buildPanel(
   for (const voteRow of buildVoteButtonRows(session.id, restaurants, restaurantLocked)) {
     container.addActionRowComponents(voteRow);
   }
-  container.addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked));
+  container.addActionRowComponents(buildRestaurantRow(session.id, restaurantLocked, restaurants));
 
   container
     .addSeparatorComponents(sep())
