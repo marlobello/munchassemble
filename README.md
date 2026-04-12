@@ -33,7 +33,7 @@ The bot posts a single **session panel** message that updates in-place with ever
 
 ### User Flow
 
-1. **Admin runs `/munchassemble`** — fills in a modal (date, times, notes) → panel posts to channel.
+1. **Admin runs `/munchassemble create`** — fills in a modal (date, times, notes) → panel posts to channel.
 2. **Anyone taps I'm In / Maybe / Out** → panel updates instantly with their name.
 3. **Anyone taps Vote** → selects from the restaurant list → panel vote count updates.
 4. **Anyone taps ➕ Suggest Spot** → picks from the admin-configured restaurant list → added to the vote.
@@ -48,7 +48,18 @@ The bot posts a single **session panel** message that updates in-place with ever
 
 ### `/munchassemble`
 
-Creates a new lunch session. Opens a modal:
+Available to **all users**. Subcommands:
+
+| Subcommand | Description |
+|---|---|
+| `/munchassemble create` | Kick off a new lunch session (opens a modal for date/time/notes) |
+| `/munchassemble status` | Show a live snapshot of the current planning session (attendance, votes, carpools) |
+| `/munchassemble history list` | Show the last 10 completed sessions (date, restaurant, attendee count) |
+| `/munchassemble history details <date>` | Show the full attendee list and details for a session on a given date (YYYY-MM-DD) |
+
+> Only one active session per server at a time. `/munchassemble create` returns an error if a session is already active.
+
+#### `/munchassemble create` modal fields
 
 | Field | Default | Description |
 |---|---|---|
@@ -56,8 +67,6 @@ Creates a new lunch session. Opens a modal:
 | Lunch Time | `11:15` | Time group arrives at restaurant (24h HH:MM) |
 | Departure Time | `11:00` | Time group departs muster points (24h HH:MM) |
 | Notes | _(blank)_ | Optional free-text note shown on the panel |
-
-> Only one active session per server at a time. A second `/munchassemble` returns an error until the current session ends.
 
 ---
 
@@ -94,15 +103,6 @@ The restaurant pick list is the only source restaurants can be added from. Users
 | `/munchassemble-config restaurant list` | Show all configured restaurants |
 
 > When a user taps **➕ Suggest Spot**, they see a select menu of restaurants from this list that haven't been added to the current session yet.
-
-#### `history`
-
-Session history is stored permanently (no expiry). Each completed session records the date, time, chosen restaurant, and attendees.
-
-| Subcommand | Description |
-|---|---|
-| `/munchassemble-config history list` | Show the last 10 completed sessions (date, restaurant, attendee count) |
-| `/munchassemble-config history details <date>` | Show the full attendee list for a session on a given date (YYYY-MM-DD) |
 
 #### `noping`
 

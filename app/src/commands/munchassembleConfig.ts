@@ -8,14 +8,9 @@ import { getRestaurantOptions, addRestaurantOption, removeRestaurantOption } fro
 import {
   getActiveSessionForGuild,
   completeSession,
-  getCompletedSessionsForGuild,
 } from '../services/sessionService.js';
-import { getParticipantsForSession } from '../services/participantService.js';
-import { getRestaurantById } from '../db/repositories/restaurantRepo.js';
 import { getNoPingListForGuild, addNoPingEntry, removeNoPingEntry } from '../db/repositories/noPingRepo.js';
-import { AttendanceStatus } from '../types/index.js';
 import { isAdmin, getMember } from '../utils/permissions.js';
-import { format12h } from '../ui/panelBuilder.js';
 
 export const data = new SlashCommandBuilder()
   .setName('munchassemble-config')
@@ -80,25 +75,6 @@ export const data = new SlashCommandBuilder()
   )
   .addSubcommandGroup((group) =>
     group
-      .setName('history')
-      .setDescription('View past Munch Assemble sessions')
-      .addSubcommand((sub) =>
-        sub.setName('list').setDescription('Show the last 10 completed sessions for this server'),
-      )
-      .addSubcommand((sub) =>
-        sub
-          .setName('details')
-          .setDescription('Show attendees for a session on a specific date')
-          .addStringOption((opt) =>
-            opt
-              .setName('date')
-              .setDescription('Date of the session (YYYY-MM-DD)')
-              .setRequired(true),
-          ),
-      ),
-  )
-  .addSubcommandGroup((group) =>
-    group
       .setName('noping')
       .setDescription('Manage users excluded from the 🔔 Ping Unanswered reminder')
       .addSubcommand((sub) =>
@@ -154,12 +130,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       await handleRestaurantOptionAdd(interaction, guildId);
     } else if (sub === 'remove') {
       await handleRestaurantOptionRemove(interaction, guildId);
-    }
-  } else if (group === 'history') {
-    if (sub === 'list') {
-      await handleHistoryList(interaction, guildId);
-    } else if (sub === 'details') {
-      await handleHistoryDetails(interaction, guildId);
     }
   } else if (group === 'noping') {
     if (sub === 'add') {
@@ -326,80 +296,6 @@ async function handleRestaurantOptionRemove(
       flags: MessageFlags.Ephemeral,
     });
   }
-}
-
-async function handleHistoryList(
-  interaction: ChatInputCommandInteraction,
-  guildId: string,
-): Promise<void> {
-  const sessions = await getCompletedSessionsForGuild(guildId, 10);
-  if (sessions.length === 0) {
-    await interaction.reply({
-      content: '📋 No completed sessions found for this server.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  const lines = await Promise.all(
-    sessions.map(async (s, i) => {
-      const participants = await getParticipantsForSession(s.id);
-      const attendeeCount = participants.filter(
-        (p) => p.attendanceStatus === AttendanceStatus.In,
-      ).length;
-      let restaurantName = '_(none chosen)_';
-      if (s.lockedRestaurantId) {
-        const r = await getRestaurantById(s.lockedRestaurantId, s.id);
-        if (r) restaurantName = r.name;
-      }
-      return `${i + 1}. **${s.date}** ${format12h(s.lunchTime)} — 🍽️ ${restaurantName} — 👥 ${attendeeCount} attending`;
-    }),
-  );
-
-  await interaction.reply({
-    content: `📋 **Recent Munch Sessions (last ${sessions.length}):**\n${lines.join('\n')}`,
-    flags: MessageFlags.Ephemeral,
-  });
-}
-
-async function handleHistoryDetails(
-  interaction: ChatInputCommandInteraction,
-  guildId: string,
-): Promise<void> {
-  const date = interaction.options.getString('date', true).trim();
-
-  const sessions = await getCompletedSessionsForGuild(guildId, 100);
-  const session = sessions.find((s) => s.date === date);
-
-  if (!session) {
-    await interaction.reply({
-      content: `📋 No completed session found for **${date}** on this server.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  const [participants, restaurant] = await Promise.all([
-    getParticipantsForSession(session.id),
-    session.lockedRestaurantId ? getRestaurantById(session.lockedRestaurantId, session.id) : Promise.resolve(null),
-  ]);
-
-  const attendees = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
-  const attendeeList = attendees.length > 0
-    ? attendees.map((p) => `• ${p.displayName}`).join('\n')
-    : '_No confirmed attendees_';
-
-  const restaurantLine = restaurant ? `🍽️ **Restaurant:** ${restaurant.name}` : '🍽️ **Restaurant:** _(none chosen)_';
-
-  await interaction.reply({
-    content: [
-      `📋 **Session: ${date} at ${format12h(session.lunchTime)}**`,
-      restaurantLine,
-      `👥 **Attendees (${attendees.length}):**`,
-      attendeeList,
-    ].join('\n'),
-    flags: MessageFlags.Ephemeral,
-  });
 }
 
 async function handleNoPingAdd(
