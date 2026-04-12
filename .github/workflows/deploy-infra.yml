@@ -11,6 +11,10 @@ on:
       - 'infra/**'
   workflow_dispatch:
 
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
 env:
   AZURE_RESOURCE_GROUP: rg-munchassemble-prod
 

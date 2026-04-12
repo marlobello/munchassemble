@@ -8,6 +8,10 @@ on:
       - '.github/workflows/deploy-app.yml'
   workflow_dispatch:
 
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write   # Push to GitHub Container Registry
