@@ -94,7 +94,8 @@ Decided 2026-03-30. Implemented in `src/utils/stateRules.ts`.
 
 ### Smart Reminders (Phase 3)
 
-- **BR-060 T-15 Reminder:** At 15 minutes before the departure time, the bot posts a channel message: restaurant name, departure time, and each driver + their muster point.
+- **BR-060 T-15 Reminder:** At 15 minutes before the departure time, the bot automatically finalizes the session (if not already finalized) and posts a channel message with the restaurant name, departure time, and each driver + their muster point.
+- **BR-064 Auto-Finalize at T-15:** If the session is still in `planning` status when the T-15 reminder fires, the bot automatically advances it to `locked`, updates the panel to its finalized state, and then posts the T-15 reminder. If the session was already manually finalized, the auto-finalize step is skipped and only the reminder is posted.
 - **BR-061 T-5 Reminder:** At 5 minutes before the departure time, the bot posts a "Final Call" channel message with the same information.
 - **BR-062 Reminder Cancellation:** If the session is finalized or completed before the reminder fires, the reminder is cancelled.
 - **BR-063 Scheduler:** Reminders are implemented via an in-process node-cron scheduler running in the Container App (always-on, minReplicas:1).

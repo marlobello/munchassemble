@@ -1,10 +1,12 @@
 import cron from 'node-cron';
 import type { Client, TextBasedChannel } from 'discord.js';
 import type { LunchSession } from '../types/index.js';
-import { AttendanceStatus, TransportStatus } from '../types/index.js';
+import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
+import { getActiveSessionForGuild, finalizeSession } from '../services/sessionService.js';
+import { refreshPanelMessage } from './panelRefresh.js';
 import { format12h } from '../ui/panelBuilder.js';
 
 // Map from sessionId to scheduled tasks
@@ -86,14 +88,29 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
   const channel = rawChannel as TextBasedChannel;
   if (!('send' in channel)) return;
 
+  // Auto-finalize if still in planning status (BR-064)
+  let activeSession = await getActiveSessionForGuild(session.guildId);
+  if (!activeSession || activeSession.id !== session.id) return; // session already completed
+
+  if (activeSession.status === SessionStatus.Planning) {
+    try {
+      activeSession = await finalizeSession(activeSession);
+      await refreshPanelMessage(activeSession, client);
+      console.log(`[scheduler] Auto-finalized session ${activeSession.id} at T-15`);
+    } catch (err) {
+      console.error(`[scheduler] Failed to auto-finalize session ${activeSession.id}:`, err);
+      // Continue to send reminder even if finalize fails
+    }
+  }
+
   const [participants, restaurants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-    getCarpoolsForSession(session.id),
+    getParticipantsForSession(activeSession.id),
+    getRestaurantsForSession(activeSession.id),
+    getCarpoolsForSession(activeSession.id),
   ]);
 
-  const restaurant = session.lockedRestaurantId
-    ? restaurants.find((r) => r.id === session.lockedRestaurantId)
+  const restaurant = activeSession.lockedRestaurantId
+    ? restaurants.find((r) => r.id === activeSession.lockedRestaurantId)
     : restaurants.sort((a, b) => b.votes.length - a.votes.length)[0];
 
   const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
@@ -101,8 +118,8 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
 
   let msg = `⏰ **T-15 Reminder — Munch Assemble!**\n`;
   msg += `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}\n`;
-  msg += `🚀 **Departure in 15 minutes** at ${format12h(session.departTime)}\n`;
-  msg += `🕐 **Lunch:** ${format12h(session.lunchTime)}\n`;
+  msg += `🚀 **Departure in 15 minutes** at ${format12h(activeSession.departTime)}\n`;
+  msg += `🕐 **Lunch:** ${format12h(activeSession.lunchTime)}\n`;
   msg += `👥 **Going (${inList.length}):** ${inList.map((p) => `<@${p.userId}>`).join(', ') || 'No one yet!'}\n`;
 
   if (drivers.length > 0) {
