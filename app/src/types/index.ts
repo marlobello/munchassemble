@@ -131,6 +131,15 @@ export interface Favorite {
   lastUsedAt: string;
 }
 
+/** A guild member excluded from the 🔔 Ping Unanswered reminder (Issue #5). */
+export interface NoPingEntry {
+  /** Composite: `${guildId}::${userId}` */
+  id: string;
+  guildId: string;
+  userId: string;
+  addedAt: string;
+}
+
 // ─── Helper types ─────────────────────────────────────────────────────────────
 
 /** Convenience view: session + its restaurants sorted by vote count. */

@@ -8,6 +8,7 @@ import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { AttendanceStatus, TransportStatus } from '../types/index.js';
+import { getNoPingListForGuild } from '../db/repositories/noPingRepo.js';
 
 /** [🔒 Finalize Plan] button — locks the session (BR-004). Creator/admin only. */
 export async function handleFinalizeButton(interaction: ButtonInteraction): Promise<void> {
@@ -105,7 +106,12 @@ export async function handlePingButton(interaction: ButtonInteraction): Promise<
     .filter((m) => !m.user.bot)
     .map((m) => m.id);
 
-  const unanswered = await getUnansweredUserIds(session.id, memberIds);
+  // Exclude users on the no-ping list (Issue #5)
+  const noPingEntries = await getNoPingListForGuild(interaction.guildId!);
+  const noPingIds = new Set(noPingEntries.map((e) => e.userId));
+  const pingableIds = memberIds.filter((id) => !noPingIds.has(id));
+
+  const unanswered = await getUnansweredUserIds(session.id, pingableIds);
 
   if (unanswered.length === 0) {
     await interaction.reply({

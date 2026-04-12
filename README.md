@@ -104,6 +104,16 @@ Session history is stored permanently (no expiry). Each completed session record
 | `/munchassemble-config history list` | Show the last 10 completed sessions (date, restaurant, attendee count) |
 | `/munchassemble-config history details <date>` | Show the full attendee list for a session on a given date (YYYY-MM-DD) |
 
+#### `noping`
+
+Manage users who are permanently excluded from the **🔔 Ping Unanswered** reminder. Useful for members who never attend but are still in the server.
+
+| Subcommand | Description |
+|---|---|
+| `/munchassemble-config noping add <user>` | Exclude a user from Ping Unanswered reminders |
+| `/munchassemble-config noping remove <user>` | Re-include a user in Ping Unanswered reminders |
+| `/munchassemble-config noping list` | List all users currently excluded from pings |
+
 ---
 
 ## Panel Buttons Reference

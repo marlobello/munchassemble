@@ -134,6 +134,16 @@ module carpoolContainer 'cosmosContainer.bicep' = {
   }
 }
 
+module noPingContainer 'cosmosContainer.bicep' = {
+  name: 'cosmos-container-noping'
+  params: {
+    accountName: cosmosAccount.name
+    databaseName: database.name
+    containerName: 'noping'
+    partitionKey: '/guildId'
+  }
+}
+
 @description('Cosmos DB account endpoint')
 output endpoint string = cosmosAccount.properties.documentEndpoint
 

@@ -30,4 +30,5 @@ export const CONTAINERS = {
   musterpoints: 'musterpoints',
   favorites: 'favorites',
   restaurantoptions: 'restaurantoptions',
+  noping: 'noping',
 } as const;

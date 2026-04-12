@@ -12,6 +12,7 @@ import {
 } from '../services/sessionService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantById } from '../db/repositories/restaurantRepo.js';
+import { getNoPingListForGuild, addNoPingEntry, removeNoPingEntry } from '../db/repositories/noPingRepo.js';
 import { AttendanceStatus } from '../types/index.js';
 import { isAdmin, getMember } from '../utils/permissions.js';
 import { format12h } from '../ui/panelBuilder.js';
@@ -95,6 +96,30 @@ export const data = new SlashCommandBuilder()
               .setRequired(true),
           ),
       ),
+  )
+  .addSubcommandGroup((group) =>
+    group
+      .setName('noping')
+      .setDescription('Manage users excluded from the 🔔 Ping Unanswered reminder')
+      .addSubcommand((sub) =>
+        sub
+          .setName('add')
+          .setDescription('Exclude a user from Ping Unanswered')
+          .addUserOption((opt) =>
+            opt.setName('user').setDescription('The user to exclude from pings').setRequired(true),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub
+          .setName('remove')
+          .setDescription('Re-include a user in Ping Unanswered')
+          .addUserOption((opt) =>
+            opt.setName('user').setDescription('The user to re-include in pings').setRequired(true),
+          ),
+      )
+      .addSubcommand((sub) =>
+        sub.setName('list').setDescription('List all users excluded from Ping Unanswered'),
+      ),
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -135,6 +160,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       await handleHistoryList(interaction, guildId);
     } else if (sub === 'details') {
       await handleHistoryDetails(interaction, guildId);
+    }
+  } else if (group === 'noping') {
+    if (sub === 'add') {
+      await handleNoPingAdd(interaction, guildId);
+    } else if (sub === 'remove') {
+      await handleNoPingRemove(interaction, guildId);
+    } else if (sub === 'list') {
+      await handleNoPingList(interaction, guildId);
     }
   }
 }
@@ -365,6 +398,57 @@ async function handleHistoryDetails(
       `👥 **Attendees (${attendees.length}):**`,
       attendeeList,
     ].join('\n'),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleNoPingAdd(
+  interaction: ChatInputCommandInteraction,
+  guildId: string,
+): Promise<void> {
+  const user = interaction.options.getUser('user', true);
+  await addNoPingEntry(guildId, user.id);
+  await interaction.reply({
+    content: `✅ **${user.displayName ?? user.username}** will no longer be included in Ping Unanswered reminders.`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+async function handleNoPingRemove(
+  interaction: ChatInputCommandInteraction,
+  guildId: string,
+): Promise<void> {
+  const user = interaction.options.getUser('user', true);
+  try {
+    await removeNoPingEntry(guildId, user.id);
+    await interaction.reply({
+      content: `✅ **${user.displayName ?? user.username}** will now be included in Ping Unanswered reminders again.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch {
+    await interaction.reply({
+      content: `⚠️ **${user.displayName ?? user.username}** was not on the no-ping list.`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+async function handleNoPingList(
+  interaction: ChatInputCommandInteraction,
+  guildId: string,
+): Promise<void> {
+  const entries = await getNoPingListForGuild(guildId);
+  if (entries.length === 0) {
+    await interaction.reply({
+      content: '🔔 No users are currently excluded from Ping Unanswered.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const list = entries.map((e) => `• <@${e.userId}>`).join('\n');
+  await interaction.reply({
+    content: `🔕 **Users excluded from Ping Unanswered:**\n${list}`,
     flags: MessageFlags.Ephemeral,
   });
 }
