@@ -33,7 +33,7 @@ The bot posts a single **session panel** message that updates in-place with ever
 
 ### User Flow
 
-1. **Admin runs `/munchassemble create`** — fills in a modal (date, times, notes) → panel posts to channel.
+1. **Anyone runs `/munchassemble create`** — fills in a modal (date, times, notes) → panel posts to channel.
 2. **Anyone taps I'm In / Maybe / Out** → panel updates instantly with their name.
 3. **Anyone taps Vote** → selects from the restaurant list → panel vote count updates.
 4. **Anyone taps ➕ Suggest Spot** → picks from the admin-configured restaurant list → added to the vote.
