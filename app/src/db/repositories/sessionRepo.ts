@@ -39,6 +39,21 @@ export async function updateSession(
   return resource as unknown as LunchSession;
 }
 
+/** Returns completed sessions for a guild, newest first. Defaults to 10. */
+export async function getCompletedSessionsForGuild(
+  guildId: string,
+  limit = 10,
+): Promise<LunchSession[]> {
+  const query: SqlQuerySpec = {
+    query: `SELECT TOP @limit * FROM c WHERE c.guildId = @guildId AND c.status = 'completed' ORDER BY c.createdAt DESC`,
+    parameters: [
+      { name: '@guildId', value: guildId },
+      { name: '@limit', value: limit },
+    ],
+  };
+  const { resources } = await container().items.query<LunchSession>(query).fetchAll();
+  return resources;
+}
 /** Mark all planning/locked sessions older than 24 h as completed (BR-005). */
 export async function expireOldSessions(): Promise<void> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -48,12 +63,11 @@ export async function expireOldSessions(): Promise<void> {
   };
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
   const now = new Date().toISOString();
-  const ttl = 30 * 24 * 60 * 60; // 30 days — auto-purge expired sessions from Cosmos
   await Promise.all(
     resources.map((s) =>
       container()
         .item(s.id, s.guildId)
-        .replace({ ...s, status: 'completed' as SessionStatus, _ttl: ttl, updatedAt: now } as unknown as ItemDefinition),
+        .replace({ ...s, status: 'completed' as SessionStatus, updatedAt: now } as unknown as ItemDefinition),
     ),
   );
 }

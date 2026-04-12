@@ -6,6 +6,7 @@ import {
   getActiveSessionForGuild,
   updateSession,
   expireOldSessions,
+  getCompletedSessionsForGuild,
 } from '../db/repositories/sessionRepo.js';
 
 export interface CreateSessionInput {
@@ -65,8 +66,7 @@ export async function finalizeSession(session: LunchSession): Promise<LunchSessi
 }
 
 export async function completeSession(session: LunchSession): Promise<LunchSession> {
-  // Set TTL so completed sessions auto-purge from Cosmos after 30 days (O1)
-  return updateSession({ ...session, status: SessionStatus.Completed, _ttl: 30 * 24 * 60 * 60 });
+  return updateSession({ ...session, status: SessionStatus.Completed });
 }
 
 export async function updateSessionTimes(
@@ -77,4 +77,4 @@ export async function updateSessionTimes(
   return updateSession({ ...session, lunchTime, departTime });
 }
 
-export { getActiveSessionForGuild, expireOldSessions };
+export { getActiveSessionForGuild, expireOldSessions, getCompletedSessionsForGuild };

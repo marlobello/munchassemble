@@ -18,7 +18,10 @@ The bot posts a single **session panel** message that updates in-place with ever
 🍔 Restaurant (voting open)
   Chipotle ████ 3 votes
   Sushi Place ██ 1 vote
-  [Vote]  [➕ Add Spot]  [🔒 Lock Choice]
+  [Vote]  [➕ Suggest Spot]  [🔒 Lock Choice]
+
+  When votes are tied (2+ spots at equal votes > 0):
+  [Vote]  [➕ Suggest Spot]  [🎲 Tie Break]
 
 🚗 Transportation
   [🚗 Can Drive]  [🚌 Need Ride]  [🚘 Driving Alone]
@@ -33,7 +36,7 @@ The bot posts a single **session panel** message that updates in-place with ever
 1. **Admin runs `/munchassemble`** — fills in a modal (date, times, notes) → panel posts to channel.
 2. **Anyone taps I'm In / Maybe / Out** → panel updates instantly with their name.
 3. **Anyone taps Vote** → selects from the restaurant list → panel vote count updates.
-4. **Anyone taps ➕ Add Spot** → picks from the admin-configured restaurant list → added to the vote.
+4. **Anyone taps ➕ Suggest Spot** → picks from the admin-configured restaurant list → added to the vote.
 5. **Drivers tap 🚗 Can Drive** → modal asks for seats + muster point (from configured list) → carpool appears on panel.
 6. **Riders tap 🚌 Need Ride** → choose a driver from a list of available rides → assigned under that driver on panel.
 7. **Admin taps 🔒 Finalize** → panel locks; bot posts a summary to the channel.
@@ -60,7 +63,7 @@ Creates a new lunch session. Opens a modal:
 
 ### `/munchassemble-config`
 
-Admin-only (requires **Manage Server** permission). Manages persistent server configuration stored in Cosmos DB.
+Requires the **Mod** role or **Manage Server** permission. Manages persistent server configuration stored in Cosmos DB.
 
 #### `session`
 
@@ -90,7 +93,16 @@ The restaurant pick list is the only source restaurants can be added from. Users
 | `/munchassemble-config restaurant remove <name>` | Remove a restaurant from the pick list |
 | `/munchassemble-config restaurant list` | Show all configured restaurants |
 
-> When a user taps **➕ Add Spot**, they see a select menu of restaurants from this list that haven't been added to the current session yet.
+> When a user taps **➕ Suggest Spot**, they see a select menu of restaurants from this list that haven't been added to the current session yet.
+
+#### `history`
+
+Session history is stored permanently (no expiry). Each completed session records the date, time, chosen restaurant, and attendees.
+
+| Subcommand | Description |
+|---|---|
+| `/munchassemble-config history list` | Show the last 10 completed sessions (date, restaurant, attendee count) |
+| `/munchassemble-config history details <date>` | Show the full attendee list for a session on a given date (YYYY-MM-DD) |
 
 ---
 
@@ -102,8 +114,9 @@ The restaurant pick list is the only source restaurants can be added from. Users
 | 🤔 Maybe | Anyone | Mark yourself as maybe |
 | ❌ I'm Out | Anyone | Mark yourself out; clears your vote and transport |
 | 🍔 Vote | Anyone In/Maybe | Pick your preferred restaurant from a select menu |
-| ➕ Add Spot | Anyone In/Maybe | Add a restaurant from the configured list to the vote |
+| ➕ Suggest Spot | Anyone In/Maybe | Suggest a restaurant from the configured list to add to the vote |
 | 🔒 Lock Choice | Creator/Admin | Lock the winning restaurant; disables voting |
+| 🎲 Tie Break | Creator/Admin | Appears instead of Lock Choice when 2+ spots are tied; randomly picks a winner and locks it |
 | 🚗 Can Drive | In only | Register as a driver (modal: seats + muster point) |
 | 🚌 Need Ride | In/Maybe | Select a driver, or be queued if none available |
 | 🚘 Driving Alone | In/Maybe | Mark yourself as driving independently |

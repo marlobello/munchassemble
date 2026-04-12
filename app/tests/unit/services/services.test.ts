@@ -4,6 +4,7 @@ jest.mock('../../../src/db/repositories/sessionRepo', () => ({
   getActiveSessionForGuild: jest.fn(async () => null),
   updateSession: jest.fn(async (s) => ({ ...s, updatedAt: new Date().toISOString() })),
   expireOldSessions: jest.fn(async () => undefined),
+  getCompletedSessionsForGuild: jest.fn(async () => []),
 }));
 
 jest.mock('../../../src/db/repositories/restaurantRepo', () => ({
@@ -19,7 +20,7 @@ jest.mock('../../../src/db/repositories/favoriteRepo', () => ({
   getTopFavorites: jest.fn(async () => []),
 }));
 
-import { startSession, getActiveSessionForGuild } from '../../../src/services/sessionService';
+import { startSession, getActiveSessionForGuild, completeSession, getCompletedSessionsForGuild } from '../../../src/services/sessionService';
 import { addRestaurant } from '../../../src/services/restaurantService';
 import * as sessionRepo from '../../../src/db/repositories/sessionRepo';
 import { SessionStatus } from '../../../src/types';
@@ -66,5 +67,41 @@ describe('restaurantService.addRestaurant', () => {
     const result = await addRestaurant('sess-1', 'guild-1', 'Chipotle', 'user-1');
     expect(result.name).toBe('Chipotle');
     expect(result.votes).toEqual([]);
+  });
+});
+
+describe('sessionService.completeSession', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('sets status to completed without a _ttl', async () => {
+    const session = {
+      id: 'sess-1',
+      guildId: 'guild-1',
+      channelId: 'chan-1',
+      messageId: 'msg-1',
+      creatorId: 'user-1',
+      date: '2026-03-29',
+      lunchTime: '11:15',
+      departTime: '11:00',
+      status: SessionStatus.Locked,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await completeSession(session);
+    const [calledWith] = (sessionRepo.updateSession as jest.Mock).mock.calls[0];
+    expect(calledWith.status).toBe(SessionStatus.Completed);
+    expect(calledWith._ttl).toBeUndefined();
+  });
+});
+
+describe('sessionService.getCompletedSessionsForGuild', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('delegates to repo and returns results', async () => {
+    const mockSessions = [{ id: 's1', guildId: 'guild-1', status: SessionStatus.Completed }];
+    (sessionRepo.getCompletedSessionsForGuild as jest.Mock).mockResolvedValueOnce(mockSessions);
+    const result = await getCompletedSessionsForGuild('guild-1', 5);
+    expect(result).toEqual(mockSessions);
+    expect(sessionRepo.getCompletedSessionsForGuild).toHaveBeenCalledWith('guild-1', 5);
   });
 });
