@@ -7,7 +7,6 @@ import { getMusterPoints, addMusterPoint, removeMusterPoint } from '../services/
 import { getRestaurantOptions, addRestaurantOption, removeRestaurantOption } from '../services/restaurantOptionService.js';
 import {
   getActiveSessionForGuild,
-  completeSession,
 } from '../services/sessionService.js';
 import { getNoPingListForGuild, addNoPingEntry, removeNoPingEntry } from '../db/repositories/noPingRepo.js';
 import { isAdmin, getMember } from '../utils/permissions.js';
@@ -15,16 +14,6 @@ import { isAdmin, getMember } from '../utils/permissions.js';
 export const data = new SlashCommandBuilder()
   .setName('munchassemble-config')
   .setDescription('Configure Munch Assemble settings for this server (admin or mod only)')
-  .addSubcommandGroup((group) =>
-    group
-      .setName('session')
-      .setDescription('Manage the active session')
-      .addSubcommand((sub) =>
-        sub
-          .setName('cancel')
-          .setDescription('Cancel (close) the current active session so a new one can be created'),
-      ),
-  )
   .addSubcommandGroup((group) =>
     group
       .setName('musterpoint')
@@ -111,11 +100,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const group = interaction.options.getSubcommandGroup();
   const sub = interaction.options.getSubcommand();
 
-  if (group === 'session') {
-    if (sub === 'cancel') {
-      await handleSessionCancel(interaction, guildId);
-    }
-  } else if (group === 'musterpoint') {
+  if (group === 'musterpoint') {
     if (sub === 'list') {
       await handleMusterList(interaction, guildId);
     } else if (sub === 'add') {
@@ -208,26 +193,6 @@ async function handleMusterRemove(
       flags: MessageFlags.Ephemeral,
     });
   }
-}
-
-async function handleSessionCancel(
-  interaction: ChatInputCommandInteraction,
-  guildId: string,
-): Promise<void> {
-  const session = await getActiveSessionForGuild(guildId);
-  if (!session) {
-    await interaction.reply({
-      content: '⚠️ No active session to cancel.',
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
-  await completeSession(session);
-  await interaction.reply({
-    content: `✅ Session for **${session.date}** has been cancelled. You can now create a new one.`,
-    flags: MessageFlags.Ephemeral,
-  });
 }
 
 async function handleRestaurantOptionList(

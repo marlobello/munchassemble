@@ -13,6 +13,7 @@ import {
   getActiveSessionForGuild,
   attachMessageId,
   getCompletedSessionsForGuild,
+  completeSession,
 } from '../services/sessionService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
@@ -20,6 +21,7 @@ import { getRestaurantsForSession, getRestaurantById } from '../services/restaur
 import { buildPanel, format12h } from '../ui/panelBuilder.js';
 import { scheduleReminders } from '../utils/scheduler.js';
 import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index.js';
+import { isAdmin, getMember } from '../utils/permissions.js';
 
 export const data = new SlashCommandBuilder()
   .setName('munchassemble')
@@ -28,6 +30,11 @@ export const data = new SlashCommandBuilder()
     sub
       .setName('create')
       .setDescription('Kick off a new lunch coordination session'),
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName('cancel')
+      .setDescription('Cancel the current active session (Admin/Mod only)'),
   )
   .addSubcommand((sub) =>
     sub
@@ -68,6 +75,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   if (sub === 'create') {
     await handleCreate(interaction, guildId);
+  } else if (sub === 'cancel') {
+    await handleCancel(interaction, guildId);
   } else if (sub === 'status') {
     await handleStatus(interaction, guildId);
   }
@@ -128,6 +137,35 @@ async function handleCreate(
   );
 
   await interaction.showModal(modal);
+}
+
+/** /munchassemble cancel — cancels the active session. Admin/Mod only. */
+async function handleCancel(
+  interaction: ChatInputCommandInteraction,
+  guildId: string,
+): Promise<void> {
+  if (!isAdmin(getMember(interaction))) {
+    await interaction.reply({
+      content: '❌ You need the **Mod** role or server admin permissions to cancel a session.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const session = await getActiveSessionForGuild(guildId);
+  if (!session) {
+    await interaction.reply({
+      content: '⚠️ No active session to cancel.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await completeSession(session);
+  await interaction.reply({
+    content: `✅ Session for **${session.date}** has been cancelled. You can now create a new one.`,
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 /** /munchassemble status — shows live session snapshot for all users. */

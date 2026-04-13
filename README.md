@@ -53,6 +53,7 @@ Available to **all users**. Subcommands:
 | Subcommand | Description |
 |---|---|
 | `/munchassemble create` | Kick off a new lunch session (opens a modal for date/time/notes) |
+| `/munchassemble cancel` | Cancel the current active session so a new one can be created **(Admin/Mod only)** |
 | `/munchassemble status` | Show a live snapshot of the current planning session (attendance, votes, carpools) |
 | `/munchassemble history list` | Show the last 10 completed sessions (date, restaurant, attendee count) |
 | `/munchassemble history details <date>` | Show the full attendee list and details for a session on a given date (YYYY-MM-DD) |
@@ -73,12 +74,6 @@ Available to **all users**. Subcommands:
 ### `/munchassemble-config`
 
 Requires the **Mod** role or **Manage Server** permission. Manages persistent server configuration stored in Cosmos DB.
-
-#### `session`
-
-| Subcommand | Description |
-|---|---|
-| `/munchassemble-config session cancel` | Cancels the current active session so a new one can be created |
 
 #### `musterpoint`
 
