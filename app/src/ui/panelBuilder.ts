@@ -72,7 +72,7 @@ function buildPanelContent(
     '### 👥 Attendance',
     `✅ **In (${inList.length}):** ${nameStr(inList)}`,
     `🤔 **Maybe (${maybeList.length}):** ${nameStr(maybeList)}`,
-    `❌ **Out:** ${outList.length || '*None*'}`,
+    `❌ **Out (${outList.length}):** ${nameStr(outList)}`,
   );
 
   // ── 4. Restaurant Voting ───────────────────────────────────────────────────
