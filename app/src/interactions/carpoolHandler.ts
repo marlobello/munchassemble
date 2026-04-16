@@ -177,9 +177,10 @@ export async function handleDrivingMusterSelect(
   // Attach the muster point to the pending entry, then show a seats-only modal.
   setPendingMusterPoint(`driving:${sessionId}:${interaction.user.id}`, musterName);
 
+  // Discord modal titles are capped at 45 characters — truncate if needed.
   const modal = new ModalBuilder()
     .setCustomId(`modal:driving_seats:${sessionId}`)
-    .setTitle(`🚗 Can Drive — ${musterName}`);
+    .setTitle(`🚗 Can Drive — ${musterName}`.slice(0, 45));
 
   modal.addComponents(
     new ActionRowBuilder<TextInputBuilder>().addComponents(
