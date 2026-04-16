@@ -129,8 +129,9 @@ export async function handleDrivingButton(
   const musterPoints = await getMusterPoints(interaction.guildId!);
 
   // Acknowledge the panel button and store the interaction for later panel update.
+  // Key includes userId so concurrent users don't collide on the same session.
   await interaction.deferUpdate();
-  storePendingInteraction(`driving:${sessionId}`, interaction);
+  storePendingInteraction(`driving:${sessionId}:${interaction.user.id}`, interaction);
 
   const options = musterPoints.map((mp) =>
     new StringSelectMenuOptionBuilder().setLabel(mp.name).setValue(`mp::${mp.name}`),
@@ -142,7 +143,7 @@ export async function handleDrivingButton(
       content: '⚠️ No pickup locations are configured. Ask an admin to run `/munchassemble-config` to add muster points.',
       flags: MessageFlags.Ephemeral,
     });
-    takePendingInteraction(`driving:${sessionId}`);
+    takePendingInteraction(`driving:${sessionId}:${interaction.user.id}`);
     return;
   }
 
@@ -174,7 +175,7 @@ export async function handleDrivingMusterSelect(
   const musterName = interaction.values[0].replace(/^mp::/, '');
 
   // Attach the muster point to the pending entry, then show a seats-only modal.
-  setPendingMusterPoint(`driving:${sessionId}`, musterName);
+  setPendingMusterPoint(`driving:${sessionId}:${interaction.user.id}`, musterName);
 
   const modal = new ModalBuilder()
     .setCustomId(`modal:driving_seats:${sessionId}`)
@@ -220,7 +221,7 @@ export async function handleDrivingModal(
   }
 
   // Retrieve (and remove) the stored panel interaction plus any attached muster point.
-  const pending = takePendingInteraction(`driving:${sessionId}`);
+  const pending = takePendingInteraction(`driving:${sessionId}:${interaction.user.id}`);
 
   let musterPoint: string;
   if (type === 'driving_full') {
@@ -337,8 +338,9 @@ export async function handleNeedRideButton(
   const available = carpools.filter((c) => c.seats > c.riders.length);
   if (available.length === 0) return;
 
-  // Store the panel interaction so the driver select handler can refresh the panel
-  storePendingInteraction(`need_ride:${sessionId}`, interaction);
+  // Store the panel interaction so the driver select handler can refresh the panel.
+  // Key includes userId so concurrent users don't collide on the same session.
+  storePendingInteraction(`need_ride:${sessionId}:${interaction.user.id}`, interaction);
 
   const options = available.map((c) => {
     const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? 'Driver';
@@ -406,7 +408,7 @@ export async function handleNeedRideSelect(
   }
 
   // Refresh the panel with the updated carpool assignment
-  const pending = takePendingInteraction(`need_ride:${sessionId}`);
+  const pending = takePendingInteraction(`need_ride:${sessionId}:${interaction.user.id}`);
   const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
     getRestaurantsForSession(session.id),
