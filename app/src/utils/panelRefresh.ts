@@ -1,10 +1,39 @@
 import type { Client } from 'discord.js';
 import { Routes } from 'discord.js';
-import type { LunchSession } from '../types/index.js';
+import type { LunchSession, Participant } from '../types/index.js';
+import { SessionStatus } from '../types/index.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
+import { getNoPingListForGuild } from '../db/repositories/noPingRepo.js';
 import { buildPanel } from '../ui/panelBuilder.js';
+
+/**
+ * Returns display names of guild members who have not responded to the session.
+ * Excludes bots, users on the noping list, and anyone already in the participants list.
+ * Requires the GuildMembers intent (already enabled).
+ */
+export async function fetchNoResponseNames(
+  guildId: string,
+  participants: Participant[],
+  client: Client,
+): Promise<string[]> {
+  const guild = client.guilds.cache.get(guildId);
+  if (!guild) return [];
+
+  const [members, noPingList] = await Promise.all([
+    guild.members.fetch(),
+    getNoPingListForGuild(guildId),
+  ]);
+
+  const participantIds = new Set(participants.map((p) => p.userId));
+  const noPingIds = new Set(noPingList.map((e) => e.userId));
+
+  return [...members.values()]
+    .filter((m) => !m.user.bot && !noPingIds.has(m.id) && !participantIds.has(m.id))
+    .map((m) => m.displayName)
+    .sort();
+}
 
 /**
  * Fetches all current session data and edits the live panel message via REST.
@@ -31,7 +60,12 @@ export async function refreshPanelMessage(session: LunchSession, client: Client)
     getCarpoolsForSession(session.id),
   ]);
 
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNames =
+    session.status === SessionStatus.Planning
+      ? await fetchNoResponseNames(session.guildId, participants, client)
+      : [];
+
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
 
   // Explicitly serialise ContainerBuilder components before the REST patch.
   const body = {

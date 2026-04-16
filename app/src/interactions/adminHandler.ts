@@ -34,7 +34,7 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
     getCarpoolsForSession(session.id),
   ]);
 
-  const panel = buildPanel(updatedSession, participants, restaurants, carpools);
+  const panel = buildPanel(updatedSession, participants, restaurants, carpools, []);
   await interaction.update(panel as any);
 
   // Post a summary message to the channel

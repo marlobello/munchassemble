@@ -20,12 +20,13 @@ import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
-import { refreshPanelMessage } from '../utils/panelRefresh.js';
+import { fetchNoResponseNames, refreshPanelMessage } from '../utils/panelRefresh.js';
 import { voteBlockedReason } from '../utils/stateRules.js';
 import { getParticipant } from '../db/repositories/participantRepo.js';
 import { DuplicateError } from '../utils/errors.js';
 import { storePendingInteraction, takePendingInteraction } from '../utils/pendingInteractions.js';
 import type { Client } from 'discord.js';
+import { SessionStatus } from '../types/index.js';
 
 /**
  * [🗳️ RestaurantName (N)] inline vote button — direct vote, no ephemeral (BR-021).
@@ -63,7 +64,11 @@ export async function handleVoteForButton(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNames =
+    session.status === SessionStatus.Planning
+      ? await fetchNoResponseNames(session.guildId, participants, interaction.client)
+      : [];
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
   await interaction.editReply(panel as any);
 }
 
@@ -164,7 +169,11 @@ export async function handleAddSpotSelect(
       getRestaurantsForSession(session.id),
       getCarpoolsForSession(session.id),
     ]);
-    const panel = buildPanel(session, participants, restaurants, carpools);
+    const noResponseNames =
+      session.status === SessionStatus.Planning
+        ? await fetchNoResponseNames(session.guildId, participants, pending.interaction.client)
+        : [];
+    const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
     await pending.interaction.editReply(panel as any);
   } else {
     await refreshPanelMessage(session, client);
@@ -208,7 +217,7 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
     getParticipantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(updatedSession, participants, restaurants, carpools);
+  const panel = buildPanel(updatedSession, participants, restaurants, carpools, []);
   await interaction.editReply(panel as any);
 }
 
@@ -250,7 +259,7 @@ export async function handleTieBreakButton(interaction: ButtonInteraction): Prom
     getParticipantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(updatedSession, participants, restaurants, carpools);
+  const panel = buildPanel(updatedSession, participants, restaurants, carpools, []);
   await interaction.editReply(panel as any);
 }
 

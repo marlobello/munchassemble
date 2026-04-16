@@ -43,6 +43,7 @@ function buildPanelContent(
   participants: Participant[],
   restaurants: Restaurant[],
   carpools: Carpool[],
+  noResponseNames: string[] = [],
 ): string {
   const isLocked = session.status === SessionStatus.Locked;
   const title = isLocked ? '🔒 **FINALIZED – MUNCH ASSEMBLE**' : '🍔 **MUNCH ASSEMBLE**';
@@ -75,6 +76,11 @@ function buildPanelContent(
     `❌ **Out (${outList.length}):** ${nameStr(outList)}`,
   );
 
+  if (!isLocked) {
+    const noRespStr = noResponseNames.length ? noResponseNames.join(', ') : '*None*';
+    lines.push(`❓ **No Response (${noResponseNames.length}):** ${noRespStr}`);
+  }
+
   // ── 4. Restaurant Voting ───────────────────────────────────────────────────
   const sorted = [...restaurants].sort((a, b) => b.votes.length - a.votes.length);
   const restaurantLines = sorted.length
@@ -96,7 +102,22 @@ function buildPanelContent(
     (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
   );
 
-  const hasTransport = soloList.length > 0 || carpools.length > 0 || unassignedRiders.length > 0;
+  // Members who are attending (In or Maybe) but haven't declared transport yet.
+  const undeclaredList = isLocked
+    ? []
+    : participants.filter(
+        (p) =>
+          (p.attendanceStatus === AttendanceStatus.In ||
+            p.attendanceStatus === AttendanceStatus.Maybe) &&
+          p.transportStatus === TransportStatus.None,
+      );
+
+  const hasTransport =
+    soloList.length > 0 ||
+    carpools.length > 0 ||
+    unassignedRiders.length > 0 ||
+    undeclaredList.length > 0;
+
   if (hasTransport) {
     lines.push('', '### 🚗 Transportation');
 
@@ -118,6 +139,10 @@ function buildPanelContent(
 
     if (unassignedRiders.length > 0) {
       lines.push(`🚌 **Needing a ride:** ${unassignedRiders.map((p) => p.displayName).join(', ')}`);
+    }
+
+    if (undeclaredList.length > 0) {
+      lines.push(`❓ **Undeclared (${undeclaredList.length}):** ${undeclaredList.map((p) => p.displayName).join(', ')}`);
     }
   }
 
@@ -259,10 +284,11 @@ export function buildPanel(
   participants: Participant[],
   restaurants: Restaurant[],
   carpools: Carpool[] = [],
+  noResponseNames: string[] = [],
 ): PanelPayload {
   const isLocked = session.status === SessionStatus.Locked;
   const accentColor = isLocked ? 0x57f287 : 0xfee75c;
-  const content = buildPanelContent(session, participants, restaurants, carpools);
+  const content = buildPanelContent(session, participants, restaurants, carpools, noResponseNames);
 
   if (isLocked) {
     // Finalized — info only, no interactive buttons

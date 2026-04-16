@@ -23,8 +23,8 @@ import {
 import { getParticipantsForSession, setTransport } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
-import { TransportStatus } from '../types/index.js';
-import { refreshPanelMessage } from '../utils/panelRefresh.js';
+import { TransportStatus, SessionStatus } from '../types/index.js';
+import { fetchNoResponseNames, refreshPanelMessage } from '../utils/panelRefresh.js';
 import { transportBlockedReason, canHostCarpool } from '../utils/stateRules.js';
 import { getParticipant } from '../db/repositories/participantRepo.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
@@ -89,7 +89,8 @@ export async function handleDrivingAloneButton(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+  const noResponseNames = await fetchNoResponseNames(session.guildId, updatedParticipants, interaction.client);
+  const panel = buildPanel(session, updatedParticipants, restaurants, carpools, noResponseNames);
   await interaction.editReply(panel as any);
 }
 
@@ -249,7 +250,8 @@ export async function handleDrivingModal(
       getRestaurantsForSession(session.id),
       getCarpoolsForSession(session.id),
     ]);
-    const panel = buildPanel(session, participants, restaurants, carpools);
+    const noResponseNames = await fetchNoResponseNames(session.guildId, participants, interaction.client);
+    const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
 
     // Prefer the stored original button interaction (interaction webhook — always works
     // for Components V2). Fall back to REST patch if the token expired.
@@ -313,7 +315,8 @@ export async function handleNeedRideButton(
       getRestaurantsForSession(session.id),
       getCarpoolsForSession(session.id),
     ]);
-    const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+    const noResponseNamesOff = await fetchNoResponseNames(session.guildId, updatedParticipants, interaction.client);
+    const panel = buildPanel(session, updatedParticipants, restaurants, carpools, noResponseNamesOff);
     await interaction.editReply(panel as any);
     return;
   }
@@ -332,7 +335,8 @@ export async function handleNeedRideButton(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNames = await fetchNoResponseNames(session.guildId, participants, interaction.client);
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
   await interaction.editReply(panel as any);
 
   // If drivers are available, show an ephemeral select for driver preference
@@ -415,7 +419,8 @@ export async function handleNeedRideSelect(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNames = await fetchNoResponseNames(session.guildId, participants, interaction.client);
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
   if (pending?.interaction) {
     await pending.interaction.editReply(panel as any);
   } else {
@@ -482,7 +487,8 @@ export async function handleJoinCarpoolButton(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, updatedParticipants, restaurants, carpools);
+  const noResponseNamesJoin = await fetchNoResponseNames(session.guildId, updatedParticipants, interaction.client);
+  const panel = buildPanel(session, updatedParticipants, restaurants, carpools, noResponseNamesJoin);
   await interaction.editReply(panel as any);
 }
 
@@ -506,7 +512,8 @@ export async function handleCarpoolSwitchButton(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNamesSwitch = await fetchNoResponseNames(session.guildId, participants, interaction.client);
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNamesSwitch);
   await interaction.editReply(panel as any);
   await interaction.followUp({ content: '✅ Your carpool role has been cleared.', flags: MessageFlags.Ephemeral });
 }
@@ -539,7 +546,8 @@ export async function handleAutoAssignButton(
     getRestaurantsForSession(session.id),
     getCarpoolsForSession(session.id),
   ]);
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNamesAA = await fetchNoResponseNames(session.guildId, participants, interaction.client);
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNamesAA);
   await interaction.editReply(panel as any);
 
   const totalAssigned = updated.reduce((sum, c) => sum + c.riders.length, 0);

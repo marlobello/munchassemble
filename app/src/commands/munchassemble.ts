@@ -20,6 +20,7 @@ import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getRestaurantsForSession, getRestaurantById } from '../services/restaurantService.js';
 import { buildPanel, format12h } from '../ui/panelBuilder.js';
 import { scheduleReminders } from '../utils/scheduler.js';
+import { fetchNoResponseNames } from '../utils/panelRefresh.js';
 import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index.js';
 import { isAdmin, getMember } from '../utils/permissions.js';
 
@@ -391,7 +392,8 @@ export async function handleCreateSessionModal(
 
     const participants = await getParticipantsForSession(session.id);
     const carpools = await getCarpoolsForSession(session.id);
-    const panel = buildPanel(session, participants, [], carpools);
+    const noResponseNames = await fetchNoResponseNames(session.guildId, participants, interaction.client);
+    const panel = buildPanel(session, participants, [], carpools, noResponseNames);
 
     const message = await interaction.editReply(panel as any);
 

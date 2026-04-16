@@ -6,6 +6,8 @@ import { clearCarpoolRole, clearCanDriveRoleOnly, getCarpoolsForSession } from '
 import { removeVote, getRestaurantsForSession } from '../services/restaurantService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
 import { buildPanel } from '../ui/panelBuilder.js';
+import { fetchNoResponseNames } from '../utils/panelRefresh.js';
+import { SessionStatus } from '../types/index.js';
 
 /**
  * Handles the three attendance buttons: ✅ In / 🤔 Maybe / ❌ Out (BR-010).
@@ -62,6 +64,11 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
     getCarpoolsForSession(session.id),
   ]);
 
-  const panel = buildPanel(session, participants, restaurants, carpools);
+  const noResponseNames =
+    session.status === SessionStatus.Planning
+      ? await fetchNoResponseNames(session.guildId, participants, interaction.client)
+      : [];
+
+  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
   await interaction.editReply(panel as any);
 }
