@@ -12,7 +12,7 @@ import { buildPanel } from '../ui/panelBuilder.js';
  * Returns display names of guild members who have not responded to the session.
  * Excludes bots, users on the noping list, and anyone already in the participants list.
  *
- * Uses the local guild member cache (populated by the GuildMembers intent on connect)
+ * Uses the local guild member cache (pre-populated at startup in index.ts)
  * instead of guild.members.fetch() to avoid gateway REQUEST_GUILD_MEMBERS rate limits.
  */
 export async function fetchNoResponseNames(

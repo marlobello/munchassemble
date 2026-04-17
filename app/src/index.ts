@@ -80,6 +80,18 @@ async function main(): Promise<void> {
   client.once(Events.ClientReady, async (c) => {
     console.log(`🤖 Munch Assemble is online as ${c.user.tag}`);
 
+    // Pre-populate guild member caches so that per-interaction lookups can use
+    // guild.members.cache instead of guild.members.fetch(), avoiding gateway
+    // REQUEST_GUILD_MEMBERS (opcode 8) rate limits on every button press.
+    for (const guild of c.guilds.cache.values()) {
+      try {
+        await guild.members.fetch();
+        console.log(`[bot] Cached ${guild.members.cache.size} members for guild ${guild.id}`);
+      } catch (err) {
+        console.error(`[bot] Failed to fetch members for guild ${guild.id}:`, err);
+      }
+    }
+
     // Expire stale sessions on startup (BR-005)
     try {
       await expireOldSessions();
