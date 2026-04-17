@@ -21,11 +21,22 @@ export async function getSessionById(id: string, guildId: string): Promise<Lunch
   }
 }
 
-/** Returns the single active (planning or locked) session for a guild, or null. */
+/**
+ * Returns the single active (planning or locked) session for a guild, or null.
+ * Only returns sessions dated today or in the future — past sessions are never
+ * considered active even if they were never explicitly completed.
+ */
 export async function getActiveSessionForGuild(guildId: string): Promise<LunchSession | null> {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
   const query: SqlQuerySpec = {
-    query: `SELECT * FROM c WHERE c.guildId = @guildId AND (c.status = 'planning' OR c.status = 'locked')`,
-    parameters: [{ name: '@guildId', value: guildId }],
+    query: `SELECT * FROM c
+            WHERE c.guildId = @guildId
+              AND (c.status = 'planning' OR c.status = 'locked')
+              AND c.date >= @today`,
+    parameters: [
+      { name: '@guildId', value: guildId },
+      { name: '@today', value: today },
+    ],
   };
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
   return resources[0] ?? null;

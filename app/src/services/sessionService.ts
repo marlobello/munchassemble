@@ -7,6 +7,7 @@ import {
   updateSession,
   expireOldSessions,
   getCompletedSessionsForGuild,
+  getSessionById,
 } from '../db/repositories/sessionRepo.js';
 
 export interface CreateSessionInput {
@@ -25,9 +26,6 @@ export async function startSession(
   input: CreateSessionInput,
   messageId = '',
 ): Promise<LunchSession> {
-  // Expire any stale sessions first so yesterday's lunch can't block today's
-  await expireOldSessions();
-
   const existing = await getActiveSessionForGuild(input.guildId);
   if (existing) {
     throw new Error(
@@ -80,4 +78,4 @@ export async function updateSessionTimes(
   return updateSession({ ...session, lunchTime, departTime });
 }
 
-export { getActiveSessionForGuild, expireOldSessions, getCompletedSessionsForGuild };
+export { getActiveSessionForGuild, expireOldSessions, getCompletedSessionsForGuild, getSessionById };

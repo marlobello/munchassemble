@@ -5,7 +5,7 @@ import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { getActiveSessionForGuild, finalizeSession } from '../services/sessionService.js';
+import { getActiveSessionForGuild, finalizeSession, completeSession, getSessionById } from '../services/sessionService.js';
 import { refreshPanelMessage } from './panelRefresh.js';
 import { format12h } from '../ui/panelBuilder.js';
 
@@ -13,7 +13,8 @@ import { format12h } from '../ui/panelBuilder.js';
 const _jobs = new Map<string, cron.ScheduledTask[]>();
 
 /**
- * Schedule T-15 and T-5 reminder jobs for a session.
+ * Schedule T-15 and T-5 reminder jobs for a session, plus an auto-complete
+ * job that fires after lunchTime to move the session to Completed.
  * Safe to call multiple times — cancels existing jobs first.
  */
 export function scheduleReminders(session: LunchSession, client: Client): void {
@@ -21,9 +22,12 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
 
   const [datePart] = session.date.split('T');
   const [departH, departM] = session.departTime.split(':').map(Number);
+  const [lunchH, lunchM] = session.lunchTime.split(':').map(Number);
 
   const t15 = computeReminderTime(datePart, departH, departM, 15);
   const t5 = computeReminderTime(datePart, departH, departM, 5);
+  // Auto-complete 60 min after lunch time (session is well and truly over)
+  const autoComplete = computeAbsoluteTime(datePart, lunchH, lunchM, 60);
 
   const jobs: cron.ScheduledTask[] = [];
 
@@ -43,6 +47,15 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
     });
     jobs.push(task);
     console.log(`[scheduler] T-5 reminder scheduled for session ${session.id} at ${t5}`);
+  }
+
+  if (autoComplete) {
+    const task = cron.schedule(autoComplete, async () => {
+      await autoCompleteSession(session);
+      task.stop();
+    });
+    jobs.push(task);
+    console.log(`[scheduler] Auto-complete scheduled for session ${session.id} at ${autoComplete}`);
   }
 
   if (jobs.length > 0) {
@@ -79,6 +92,40 @@ function computeReminderTime(
   if (reminderTime <= new Date()) return null;
 
   return `${m} ${h} ${d} ${mo} *`;
+}
+
+/**
+ * Build a node-cron expression for an absolute time (base + offsetMinutes after).
+ * Returns null if the resulting time has already passed.
+ */
+function computeAbsoluteTime(
+  date: string,
+  baseH: number,
+  baseM: number,
+  offsetMinutes: number,
+): string | null {
+  const totalMinutes = baseH * 60 + baseM + offsetMinutes;
+  const h = Math.floor(totalMinutes / 60) % 24;
+  const m = totalMinutes % 60;
+
+  const [y, mo, d] = date.split('-').map(Number);
+  const fireTime = new Date(y, mo - 1, d, h, m, 0);
+  if (fireTime <= new Date()) return null;
+
+  return `${m} ${h} ${d} ${mo} *`;
+}
+
+/** Auto-complete a session after the lunch has ended. */
+async function autoCompleteSession(session: LunchSession): Promise<void> {
+  try {
+    // Re-fetch to get current status — may have been manually completed already
+    const current = await getSessionById(session.id, session.guildId);
+    if (!current || current.status === SessionStatus.Completed) return;
+    await completeSession(current);
+    console.log(`[scheduler] Auto-completed session ${session.id}`);
+  } catch (err) {
+    console.error(`[scheduler] Failed to auto-complete session ${session.id}:`, err);
+  }
 }
 
 async function sendT15Reminder(session: LunchSession, client: Client): Promise<void> {
