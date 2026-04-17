@@ -16,17 +16,13 @@ import {
   getRestaurantsForSession,
 } from '../services/restaurantService.js';
 import { getRestaurantOptions } from '../services/restaurantOptionService.js';
-import { getParticipantsForSession } from '../services/participantService.js';
-import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
-import { fetchNoResponseNames, refreshPanelMessage } from '../utils/panelRefresh.js';
+import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { voteBlockedReason } from '../utils/stateRules.js';
 import { getParticipant } from '../db/repositories/participantRepo.js';
 import { DuplicateError } from '../utils/errors.js';
 import { storePendingInteraction, takePendingInteraction } from '../utils/pendingInteractions.js';
 import type { Client } from 'discord.js';
-import { SessionStatus } from '../types/index.js';
 
 /**
  * [🗳️ RestaurantName (N)] inline vote button — direct vote, no ephemeral (BR-021).
@@ -59,17 +55,7 @@ export async function handleVoteForButton(
 
   await voteForRestaurant(session.id, restaurantId, interaction.user.id);
 
-  const [participants, restaurants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-    getCarpoolsForSession(session.id),
-  ]);
-  const noResponseNames =
-    session.status === SessionStatus.Planning
-      ? await fetchNoResponseNames(session.guildId, participants, interaction.client)
-      : [];
-  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
-  await interaction.editReply(panel as any);
+  await refreshPanelMessage(session, client);
 }
 
 /** [➕ Suggest Spot] button — shows configured restaurant options not already in session (BR-020). */
@@ -160,24 +146,10 @@ export async function handleAddSpotSelect(
     throw err;
   }
 
-  // Update the panel via the stored original button interaction (interaction webhook —
-  // always works for Components V2). Fall back to REST patch if the token expired.
-  const pending = takePendingInteraction(`add_spot:${sessionId}`);
-  if (pending?.interaction) {
-    const [participants, restaurants, carpools] = await Promise.all([
-      getParticipantsForSession(session.id),
-      getRestaurantsForSession(session.id),
-      getCarpoolsForSession(session.id),
-    ]);
-    const noResponseNames =
-      session.status === SessionStatus.Planning
-        ? await fetchNoResponseNames(session.guildId, participants, pending.interaction.client)
-        : [];
-    const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
-    await pending.interaction.editReply(panel as any);
-  } else {
-    await refreshPanelMessage(session, client);
-  }
+  // Update the panel via the known-working REST patch endpoint.
+  // Consume the pending interaction to clean up the store (not needed for editReply any more).
+  takePendingInteraction(`add_spot:${sessionId}`);
+  await refreshPanelMessage(session, client);
 
   await interaction.editReply({ content: `✅ **${name}** added!`, components: [] });
 }
@@ -213,12 +185,7 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
   const leader = [...restaurants].sort((a, b) => b.votes.length - a.votes.length)[0];
   const updatedSession = await lockRestaurant(session, leader.id);
 
-  const [participants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getCarpoolsForSession(session.id),
-  ]);
-  const panel = buildPanel(updatedSession, participants, restaurants, carpools, []);
-  await interaction.editReply(panel as any);
+  await refreshPanelMessage(updatedSession, interaction.client);
 }
 
 /** [🎲 Tie Break] button — randomly picks a winner among tied restaurants (Issue #3). */
@@ -255,12 +222,7 @@ export async function handleTieBreakButton(interaction: ButtonInteraction): Prom
   const winner = tied[Math.floor(Math.random() * tied.length)];
   const updatedSession = await lockRestaurant(session, winner.id);
 
-  const [participants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getCarpoolsForSession(session.id),
-  ]);
-  const panel = buildPanel(updatedSession, participants, restaurants, carpools, []);
-  await interaction.editReply(panel as any);
+  await refreshPanelMessage(updatedSession, interaction.client);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

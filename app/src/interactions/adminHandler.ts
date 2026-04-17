@@ -4,7 +4,6 @@ import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '.
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
-import { buildPanel } from '../ui/panelBuilder.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
 import { AttendanceStatus, TransportStatus } from '../types/index.js';
@@ -27,6 +26,8 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
     return;
   }
 
+  await interaction.deferUpdate();
+
   const updatedSession = await finalizeSession(session);
   const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
@@ -34,8 +35,7 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
     getCarpoolsForSession(session.id),
   ]);
 
-  const panel = buildPanel(updatedSession, participants, restaurants, carpools, []);
-  await interaction.update(panel as any);
+  await refreshPanelMessage(updatedSession, interaction.client);
 
   // Post a summary message to the channel
   const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);

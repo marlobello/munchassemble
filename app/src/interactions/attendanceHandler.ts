@@ -1,13 +1,11 @@
 import type { ButtonInteraction, GuildMember } from 'discord.js';
 import { MessageFlags } from 'discord.js';
 import { AttendanceStatus } from '../types/index.js';
-import { rsvp, getParticipantsForSession } from '../services/participantService.js';
-import { clearCarpoolRole, clearCanDriveRoleOnly, getCarpoolsForSession } from '../services/carpoolService.js';
-import { removeVote, getRestaurantsForSession } from '../services/restaurantService.js';
+import { rsvp } from '../services/participantService.js';
+import { clearCarpoolRole, clearCanDriveRoleOnly } from '../services/carpoolService.js';
+import { removeVote } from '../services/restaurantService.js';
 import { getActiveSessionForGuild } from '../services/sessionService.js';
-import { buildPanel } from '../ui/panelBuilder.js';
-import { fetchNoResponseNames } from '../utils/panelRefresh.js';
-import { SessionStatus } from '../types/index.js';
+import { refreshPanelMessage } from '../utils/panelRefresh.js';
 
 /**
  * Handles the three attendance buttons: ✅ In / 🤔 Maybe / ❌ Out (BR-010).
@@ -58,17 +56,5 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
     status,
   );
 
-  const [participants, restaurants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-    getCarpoolsForSession(session.id),
-  ]);
-
-  const noResponseNames =
-    session.status === SessionStatus.Planning
-      ? await fetchNoResponseNames(session.guildId, participants, interaction.client)
-      : [];
-
-  const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
-  await interaction.editReply(panel as any);
+  await refreshPanelMessage(session, interaction.client);
 }
