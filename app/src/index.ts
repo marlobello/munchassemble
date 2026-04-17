@@ -11,6 +11,7 @@ import {
   ChatInputCommandInteraction,
 } from 'discord.js';
 import { initConfig, getConfig } from './config.js';
+import cron from 'node-cron';
 import { expireOldSessions, getActiveSessionForGuild } from './services/sessionService.js';
 import { execute as executeMunchAssemble, handleCreateSessionModal } from './commands/munchassemble.js';
 import { execute as executeMunchAssembleConfig } from './commands/munchassembleConfig.js';
@@ -86,6 +87,16 @@ async function main(): Promise<void> {
     } catch (err) {
       console.error('[bot] Failed to expire stale sessions:', err);
     }
+
+    // Nightly midnight cron — expire any sessions whose date has now passed (BR-005)
+    cron.schedule('0 0 * * *', async () => {
+      try {
+        await expireOldSessions();
+        console.log('[bot] Nightly session expiry ran');
+      } catch (err) {
+        console.error('[bot] Nightly session expiry failed:', err);
+      }
+    });
 
     // Reschedule reminders for any active sessions (P3 — restart resilience)
     for (const guild of c.guilds.cache.values()) {

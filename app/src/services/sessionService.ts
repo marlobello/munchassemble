@@ -25,6 +25,9 @@ export async function startSession(
   input: CreateSessionInput,
   messageId = '',
 ): Promise<LunchSession> {
+  // Expire any stale sessions first so yesterday's lunch can't block today's
+  await expireOldSessions();
+
   const existing = await getActiveSessionForGuild(input.guildId);
   if (existing) {
     throw new Error(

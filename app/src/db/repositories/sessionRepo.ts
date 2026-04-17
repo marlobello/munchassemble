@@ -54,12 +54,24 @@ export async function getCompletedSessionsForGuild(
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
   return resources;
 }
-/** Mark all planning/locked sessions older than 24 h as completed (BR-005). */
+/**
+ * Mark stale planning/locked sessions as completed (BR-005).
+ * A session is stale if its date has already passed (primary) OR it was created
+ * more than 24 h ago (safety net for sessions with bad/missing date values).
+ */
 export async function expireOldSessions(): Promise<void> {
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  // today as YYYY-MM-DD (UTC) — sessions dated before today are definitely over
+  const today = new Date().toISOString().slice(0, 10);
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
   const query: SqlQuerySpec = {
-    query: `SELECT * FROM c WHERE (c.status = 'planning' OR c.status = 'locked') AND c.createdAt < @cutoff`,
-    parameters: [{ name: '@cutoff', value: cutoff }],
+    query: `SELECT * FROM c
+            WHERE (c.status = 'planning' OR c.status = 'locked')
+              AND (c.date < @today OR c.createdAt < @cutoff24h)`,
+    parameters: [
+      { name: '@today', value: today },
+      { name: '@cutoff24h', value: cutoff24h },
+    ],
   };
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
   const now = new Date().toISOString();
