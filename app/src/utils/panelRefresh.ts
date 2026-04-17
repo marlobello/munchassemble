@@ -11,7 +11,9 @@ import { buildPanel } from '../ui/panelBuilder.js';
 /**
  * Returns display names of guild members who have not responded to the session.
  * Excludes bots, users on the noping list, and anyone already in the participants list.
- * Requires the GuildMembers intent (already enabled).
+ *
+ * Uses the local guild member cache (populated by the GuildMembers intent on connect)
+ * instead of guild.members.fetch() to avoid gateway REQUEST_GUILD_MEMBERS rate limits.
  */
 export async function fetchNoResponseNames(
   guildId: string,
@@ -19,12 +21,20 @@ export async function fetchNoResponseNames(
   client: Client,
 ): Promise<string[]> {
   const guild = client.guilds.cache.get(guildId);
-  if (!guild) return [];
+  if (!guild) {
+    console.warn('[panelRefresh] Guild not in cache:', guildId);
+    return [];
+  }
 
-  const [members, noPingList] = await Promise.all([
-    guild.members.fetch(),
-    getNoPingListForGuild(guildId),
-  ]);
+  // Use the local cache instead of fetch() — avoids gateway opcode 8 rate limits.
+  // The GuildMembers intent ensures the cache is populated on connect for small guilds.
+  const members = guild.members.cache;
+  if (members.size === 0) {
+    console.warn('[panelRefresh] Guild member cache is empty; skipping No Response names');
+    return [];
+  }
+
+  const noPingList = await getNoPingListForGuild(guildId);
 
   const participantIds = new Set(participants.map((p) => p.userId));
   const noPingIds = new Set(noPingList.map((e) => e.userId));
@@ -38,10 +48,6 @@ export async function fetchNoResponseNames(
 /**
  * Fetches all current session data and edits the live panel message via REST.
  *
- * Used as a fallback by handlers that cannot carry the original ButtonInteraction
- * through their flow (e.g. Edit Time modal, Switch, Auto-Assign, and any path
- * where showModal() consumed the button token before it could be stored).
- *
  * Uses client.rest.patch() with explicitly serialised components because
  * discord.js's message.edit() pipeline expects ActionRowBuilder[] in the
  * components array and does not correctly serialise top-level Components V2
@@ -52,7 +58,12 @@ export async function fetchNoResponseNames(
  * so the interaction's 3-second acknowledgement window is not exceeded.
  */
 export async function refreshPanelMessage(session: LunchSession, client: Client): Promise<void> {
-  if (!session.messageId) return;
+  if (!session.messageId) {
+    console.warn('[panelRefresh] No messageId on session', session.id);
+    return;
+  }
+
+  console.log('[panelRefresh] Refreshing panel for session', session.id);
 
   const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
@@ -60,10 +71,14 @@ export async function refreshPanelMessage(session: LunchSession, client: Client)
     getCarpoolsForSession(session.id),
   ]);
 
-  const noResponseNames =
-    session.status === SessionStatus.Planning
-      ? await fetchNoResponseNames(session.guildId, participants, client)
-      : [];
+  let noResponseNames: string[] = [];
+  if (session.status === SessionStatus.Planning) {
+    try {
+      noResponseNames = await fetchNoResponseNames(session.guildId, participants, client);
+    } catch (err) {
+      console.error('[panelRefresh] fetchNoResponseNames failed (continuing without):', err);
+    }
+  }
 
   const panel = buildPanel(session, participants, restaurants, carpools, noResponseNames);
 
@@ -80,7 +95,8 @@ export async function refreshPanelMessage(session: LunchSession, client: Client)
       Routes.channelMessage(session.channelId, session.messageId),
       { body },
     );
+    console.log('[panelRefresh] Panel updated successfully for session', session.id);
   } catch (err) {
-    console.error('[panelRefresh] Failed to refresh panel message:', err);
+    console.error('[panelRefresh] REST patch failed:', err);
   }
 }

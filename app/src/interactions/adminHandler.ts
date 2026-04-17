@@ -98,10 +98,9 @@ export async function handlePingButton(interaction: ButtonInteraction): Promise<
     return;
   }
 
-  // Fetch all non-bot guild members
+  // Use the local member cache (populated by GuildMembers intent) to avoid rate limits.
   const guild = interaction.guild;
   if (!guild) return;
-  await guild.members.fetch();
   const memberIds = guild.members.cache
     .filter((m) => !m.user.bot)
     .map((m) => m.id);

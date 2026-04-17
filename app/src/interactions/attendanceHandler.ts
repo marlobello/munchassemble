@@ -19,9 +19,11 @@ import { refreshPanelMessage } from '../utils/panelRefresh.js';
 export async function handleAttendanceButton(interaction: ButtonInteraction): Promise<void> {
   const [, statusStr, sessionId] = interaction.customId.split(':');
   const status = statusStr as AttendanceStatus;
+  console.log(`[attendance] ${interaction.user.username} clicked ${status} for session ${sessionId}`);
 
   const session = await getActiveSessionForGuild(interaction.guildId!);
   if (!session || session.id !== sessionId) {
+    console.warn('[attendance] Session not found or mismatch:', session?.id, sessionId);
     await interaction.reply({
       content: '⚠️ This session is no longer active.',
       flags: MessageFlags.Ephemeral,
@@ -32,21 +34,19 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
   // Acknowledge immediately to stay within the 3s Discord window;
   // all DB work happens after this point.
   await interaction.deferUpdate();
+  console.log('[attendance] Deferred update, performing DB work...');
 
   const member = interaction.member as GuildMember;
 
   // Cascade effects based on new attendance status
   if (status === AttendanceStatus.Out) {
-    // Out: clear ALL transport (cancel CanDrive carpool, remove from any carpool) + remove vote
     await Promise.all([
       clearCarpoolRole(session.id, interaction.user.id),
       removeVote(session.id, interaction.user.id),
     ]);
   } else if (status === AttendanceStatus.Maybe) {
-    // Maybe: only cancel hosted carpool (CanDrive); DrivingAlone/NeedRide are permitted with Maybe
     await clearCanDriveRoleOnly(session.id, interaction.user.id);
   }
-  // In: no cascade — user can freely choose transport and vote
 
   await rsvp(
     session.id,
@@ -56,5 +56,7 @@ export async function handleAttendanceButton(interaction: ButtonInteraction): Pr
     status,
   );
 
+  console.log('[attendance] DB work done, refreshing panel...');
   await refreshPanelMessage(session, interaction.client);
+  console.log('[attendance] Handler complete');
 }
