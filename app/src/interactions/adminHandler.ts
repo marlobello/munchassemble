@@ -1,6 +1,6 @@
 import type { ButtonInteraction, GuildMember, ModalSubmitInteraction } from 'discord.js';
-import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } from 'discord.js';
-import { getActiveSessionForGuild, finalizeSession, updateSessionTimes } from '../services/sessionService.js';
+import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { getActiveSessionForGuild, finalizeSession, cancelSession, updateSessionTimes } from '../services/sessionService.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
@@ -124,6 +124,73 @@ export async function handlePingButton(interaction: ButtonInteraction): Promise<
   await interaction.reply({
     content: `👀 **Still need responses from:** ${mentions}`,
     allowedMentions: { users: unanswered },
+  });
+}
+
+/** [❌ Cancel Plan] button — shows a confirmation prompt. Creator/admin only. */
+export async function handleCancelButton(interaction: ButtonInteraction): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
+    await interaction.reply({
+      content: '🚫 Only the session creator or a server admin can cancel the plan.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`admin:cancel_confirm:${sessionId}`)
+      .setLabel('Yes, cancel this event')
+      .setStyle(ButtonStyle.Danger),
+  );
+
+  await interaction.reply({
+    content: '⚠️ **Are you sure you want to cancel this Munch session?** This cannot be undone.',
+    components: [row],
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/** Confirmation button for cancelling a session. */
+export async function handleCancelConfirmButton(interaction: ButtonInteraction): Promise<void> {
+  const [, , sessionId] = interaction.customId.split(':');
+  const session = await getActiveSessionForGuild(interaction.guildId!);
+  if (!session || session.id !== sessionId) {
+    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferUpdate();
+
+  const updatedSession = await cancelSession(session);
+  const participants = await getParticipantsForSession(session.id);
+
+  await refreshPanelMessage(updatedSession, interaction.client);
+
+  // Notify the channel with an @mention of everyone who was In or Maybe
+  const inOrMaybe = participants.filter(
+    (p) => p.attendanceStatus === AttendanceStatus.In || p.attendanceStatus === AttendanceStatus.Maybe,
+  );
+  const mentionIds = inOrMaybe.map((p) => p.userId);
+  const mentionTags = mentionIds.map((id) => `<@${id}>`).join(' ');
+
+  const lines: string[] = [
+    `❌ **Munch session for ${updatedSession.date} has been cancelled** by <@${interaction.user.id}>.`,
+  ];
+  if (mentionTags) {
+    lines.push(`📢 Heads up: ${mentionTags}`);
+  }
+
+  await interaction.followUp({
+    content: lines.join('\n'),
+    allowedMentions: { users: mentionIds },
   });
 }
 

@@ -29,7 +29,7 @@ export async function startSession(
   const existing = await getActiveSessionForGuild(input.guildId);
   if (existing) {
     throw new Error(
-      `A session is already active for this server (started on ${existing.date}). Finalize it first.`,
+      `A session is already active for this server (started on ${existing.date}). Finalize or cancel it first.`,
     );
   }
 
@@ -64,6 +64,10 @@ export async function lockRestaurant(session: LunchSession, restaurantId: string
 
 export async function finalizeSession(session: LunchSession): Promise<LunchSession> {
   return updateSession({ ...session, status: SessionStatus.Locked });
+}
+
+export async function cancelSession(session: LunchSession): Promise<LunchSession> {
+  return updateSession({ ...session, status: SessionStatus.Cancelled });
 }
 
 export async function completeSession(session: LunchSession): Promise<LunchSession> {

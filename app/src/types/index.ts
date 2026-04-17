@@ -4,6 +4,7 @@ export enum SessionStatus {
   Planning = 'planning',
   Locked = 'locked',
   Completed = 'completed',
+  Cancelled = 'cancelled',
 }
 
 export enum AttendanceStatus {

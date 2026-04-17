@@ -38,6 +38,7 @@
 - **BR-002 Session Panel:** On session creation, the bot posts a single persistent message (the "session panel") containing an embed (live summary) and action rows of buttons. This panel is the single source of truth and is edited in-place on every state change.
 - **BR-003 Session Status:** A session has statuses: `planning` → `locked` → `completed`. The session creator or a Discord server admin/mod can advance the status.
 - **BR-004 Session Finalization:** Clicking "🔒 Finalize Plan" (creator/admin only) advances status to `locked`, trims the action rows to [View Details] and [Leave Plan], and posts a summary message.
+- **BR-004a Session Cancellation:** Clicking "❌ Cancel Plan" (creator/admin only) shows an ephemeral confirmation prompt. On confirm, advances status to `cancelled`, updates the panel to a read-only cancelled state (red accent), and posts a channel notification mentioning all In/Maybe participants.
 - **BR-005 Session Expiry:** Sessions in `planning` or `locked` status that are older than 24 hours are automatically marked `completed` on next bot startup.
 
 ### Attendance
@@ -146,7 +147,7 @@ RestaurantOption   { guildId, name, isActive, createdAt }
 |---|---|
 | Create session | Any server member |
 | RSVP / Vote / Add restaurant | Any server member |
-| Lock restaurant / Finalize plan / Edit time / Ping unanswered | Session creator OR Discord admin/mod |
+| Lock restaurant / Finalize plan / Cancel plan / Edit time / Ping unanswered | Session creator OR Discord admin/mod |
 | Configure muster points / Configure restaurant list | Discord admin/mod only |
 | Cancel session | Discord admin/mod only |
 

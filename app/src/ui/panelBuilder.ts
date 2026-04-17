@@ -32,6 +32,8 @@ export const BTN = {
   autoAssign: (sid: string) => `carpool:auto_assign:${sid}`,
   editTime: (sid: string) => `admin:edit_time:${sid}`,
   finalize: (sid: string) => `admin:finalize:${sid}`,
+  cancel: (sid: string) => `admin:cancel:${sid}`,
+  cancelConfirm: (sid: string) => `admin:cancel_confirm:${sid}`,
   ping: (sid: string) => `admin:ping:${sid}`,
 } as const;
 
@@ -46,7 +48,12 @@ function buildPanelContent(
   noResponseNames: string[] = [],
 ): string {
   const isLocked = session.status === SessionStatus.Locked;
-  const title = isLocked ? '🔒 **FINALIZED – MUNCH ASSEMBLE**' : '🍔 **MUNCH ASSEMBLE**';
+  const isCancelled = session.status === SessionStatus.Cancelled;
+  const title = isCancelled
+    ? '❌ **CANCELLED – MUNCH ASSEMBLE**'
+    : isLocked
+      ? '🔒 **FINALIZED – MUNCH ASSEMBLE**'
+      : '🍔 **MUNCH ASSEMBLE**';
 
   // ── 1. Title + Date ────────────────────────────────────────────────────────
   const lines: string[] = [
@@ -147,7 +154,7 @@ function buildPanelContent(
   }
 
   // ── 6. Status ──────────────────────────────────────────────────────────────
-  lines.push('', isLocked ? '🟢 *Status: Finalized*' : '🟡 *Status: Planning*');
+  lines.push('', isCancelled ? '🔴 *Status: Cancelled*' : isLocked ? '🟢 *Status: Finalized*' : '🟡 *Status: Planning*');
 
   return lines.join('\n');
 }
@@ -261,6 +268,7 @@ function buildAdminRow(sessionId: string, locked: boolean): ActionRowBuilder<But
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId(BTN.autoAssign(sessionId)).setLabel('🤖 Auto Assign').setStyle(ButtonStyle.Secondary).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.finalize(sessionId)).setLabel('🔒 Finalize Plan').setStyle(ButtonStyle.Danger).setDisabled(locked),
+    new ButtonBuilder().setCustomId(BTN.cancel(sessionId)).setLabel('❌ Cancel Plan').setStyle(ButtonStyle.Danger).setDisabled(locked),
     new ButtonBuilder().setCustomId(BTN.ping(sessionId)).setLabel('🔔 Ping Unanswered').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(BTN.editTime(sessionId)).setLabel('✏️ Edit Time').setStyle(ButtonStyle.Secondary).setDisabled(locked),
   );
@@ -287,11 +295,12 @@ export function buildPanel(
   noResponseNames: string[] = [],
 ): PanelPayload {
   const isLocked = session.status === SessionStatus.Locked;
-  const accentColor = isLocked ? 0x57f287 : 0xfee75c;
+  const isCancelled = session.status === SessionStatus.Cancelled;
+  const accentColor = isCancelled ? 0xed4245 : isLocked ? 0x57f287 : 0xfee75c;
   const content = buildPanelContent(session, participants, restaurants, carpools, noResponseNames);
 
-  if (isLocked) {
-    // Finalized — info only, no interactive buttons
+  if (isLocked || isCancelled) {
+    // Finalized or Cancelled — info only, no interactive buttons
     const container = new ContainerBuilder()
       .setAccentColor(accentColor)
       .addTextDisplayComponents(new TextDisplayBuilder().setContent(content));

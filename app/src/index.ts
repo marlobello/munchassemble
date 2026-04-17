@@ -27,6 +27,8 @@ import {
 } from './interactions/restaurantHandler.js';
 import {
   handleFinalizeButton,
+  handleCancelButton,
+  handleCancelConfirmButton,
   handlePingButton,
   handleEditTimeButton,
   handleEditTimeModal,
@@ -197,6 +199,8 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
       else if (action === 'auto_assign') await handleAutoAssignButton(btn, client);
     } else if (namespace === 'admin') {
       if (action === 'finalize') await handleFinalizeButton(btn);
+      else if (action === 'cancel') await handleCancelButton(btn);
+      else if (action === 'cancel_confirm') await handleCancelConfirmButton(btn);
       else if (action === 'ping') await handlePingButton(btn);
       else if (action === 'edit_time') await handleEditTimeButton(btn);
     }
