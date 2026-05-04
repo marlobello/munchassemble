@@ -30,6 +30,9 @@ param keyVaultName string
 @description('Discord Guild ID (optional; set to restrict slash command registration to one guild)')
 param discordGuildId string = ''
 
+@description('IANA timezone for scheduling (e.g. America/Chicago). Must match the timezone users enter times in.')
+param timezone string = 'America/Chicago'
+
 @description('Environment tag')
 param env string = 'prod'
 
@@ -78,6 +81,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
             { name: 'DISCORD_GUILD_ID', value: discordGuildId }
+            { name: 'TZ', value: timezone }
             { name: 'HEALTH_PORT', value: '3000' }
           ]
           probes: [

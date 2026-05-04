@@ -1,3 +1,10 @@
+// Set process timezone early — before any Date operations.
+// All user-facing times (lunchTime, departTime) are stored in local time.
+// This ensures node-cron and Date constructors interpret them correctly.
+if (!process.env.TZ) {
+  process.env.TZ = 'America/Chicago';
+}
+
 import {
   Client,
   GatewayIntentBits,

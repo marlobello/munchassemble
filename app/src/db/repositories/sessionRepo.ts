@@ -2,6 +2,15 @@ import { ItemDefinition, SqlQuerySpec } from '@azure/cosmos';
 import { getDatabase, CONTAINERS } from '../cosmosClient.js';
 import type { LunchSession, SessionStatus } from '../../types/index.js';
 
+/** Returns today's date as YYYY-MM-DD in the process local timezone (set via TZ env var). */
+function getLocalToday(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 const container = () => getDatabase().container(CONTAINERS.sessions);
 
 export async function createSession(session: LunchSession): Promise<LunchSession> {
@@ -27,7 +36,7 @@ export async function getSessionById(id: string, guildId: string): Promise<Lunch
  * considered active even if they were never explicitly completed.
  */
 export async function getActiveSessionForGuild(guildId: string): Promise<LunchSession | null> {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  const today = getLocalToday();
   const query: SqlQuerySpec = {
     query: `SELECT * FROM c
             WHERE c.guildId = @guildId
@@ -67,21 +76,17 @@ export async function getCompletedSessionsForGuild(
 }
 /**
  * Mark stale planning/locked sessions as completed (BR-005).
- * A session is stale if its date has already passed (primary) OR it was created
- * more than 24 h ago (safety net for sessions with bad/missing date values).
+ * A session is stale if its date has already passed in local time.
  */
 export async function expireOldSessions(): Promise<void> {
-  // today as YYYY-MM-DD (UTC) — sessions dated before today are definitely over
-  const today = new Date().toISOString().slice(0, 10);
-  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const today = getLocalToday();
 
   const query: SqlQuerySpec = {
     query: `SELECT * FROM c
             WHERE (c.status = 'planning' OR c.status = 'locked')
-              AND (c.date < @today OR c.createdAt < @cutoff24h)`,
+              AND c.date < @today`,
     parameters: [
       { name: '@today', value: today },
-      { name: '@cutoff24h', value: cutoff24h },
     ],
   };
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
