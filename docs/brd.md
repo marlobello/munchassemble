@@ -95,9 +95,10 @@ Decided 2026-03-30. Implemented in `src/utils/stateRules.ts`.
 
 ### Smart Reminders (Phase 3)
 
-- **BR-060 T-15 Reminder:** At 15 minutes before the departure time, the bot automatically finalizes the session (if not already finalized) and posts a channel message with the restaurant name, departure time, and each driver + their muster point.
+- **BR-060 T-15 Reminder:** At 15 minutes before the departure time, the bot automatically finalizes the session (if not already finalized) and posts a channel message with the restaurant name, departure/lunch times, attendance list, and full transportation details (carpool assignments with driver, muster point, riders, solo drivers, and unassigned riders) — matching the Finalized notification format.
 - **BR-064 Auto-Finalize at T-15:** If the session is still in `planning` status when the T-15 reminder fires, the bot automatically advances it to `locked`, updates the panel to its finalized state, and then posts the T-15 reminder. If the session was already manually finalized, the auto-finalize step is skipped and only the reminder is posted.
-- **BR-061 T-5 Reminder:** At 5 minutes before the departure time, the bot posts a "Final Call" channel message with the same information.
+- **BR-065 Auto-Assign Rides at T-15:** Before auto-finalizing at T-15, if any participants are marked as needing a ride but have not been assigned to a driver, the bot runs the auto-assign algorithm (BR-033) to distribute them across available drivers. This ensures transportation is resolved before the plan is locked.
+- **BR-061 T-5 Reminder:** At 5 minutes before the departure time, the bot posts a "Final Call" channel message with the same full details as the T-15 reminder.
 - **BR-062 Reminder Cancellation:** If the session is finalized or completed before the reminder fires, the reminder is cancelled.
 - **BR-063 Scheduler:** Reminders are implemented via an in-process node-cron scheduler running in the Container App (always-on, minReplicas:1).
 
@@ -173,7 +174,7 @@ RestaurantOption   { guildId, name, isActive, createdAt }
 - **BR-010/011:** Clicking ✅ In updates the panel in < 2 seconds; user appears in the roster.
 - **BR-021/022:** Voting updates the leaderboard in the panel in < 2 seconds.
 - **BR-030–034:** (Phase 2) Carpool state visible in panel; auto-assign distributes riders correctly.
-- **BR-060/061:** (Phase 3) Reminders posted within 30 seconds of the scheduled trigger time.
+- **BR-060/061/065:** (Phase 3) Reminders posted within 30 seconds of the scheduled trigger time; include full transportation details; auto-assign runs at T-15 before finalization.
 - One active session per guild enforced; a second `/munchassemble` returns an ephemeral error.
 - All secrets sourced from Key Vault; none committed to source control (NFR §1).
 - Monthly Azure cost remains < $20 (NFR §4).

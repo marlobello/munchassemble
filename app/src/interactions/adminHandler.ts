@@ -6,8 +6,9 @@ import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
-import { AttendanceStatus, TransportStatus } from '../types/index.js';
+import { AttendanceStatus } from '../types/index.js';
 import { getNoPingListForGuild } from '../db/repositories/noPingRepo.js';
+import { buildNotificationSummary } from '../utils/notificationBuilder.js';
 
 /** [🔒 Finalize Plan] button — locks the session (BR-004). Creator/admin only. */
 export async function handleFinalizeButton(interaction: ButtonInteraction): Promise<void> {
@@ -37,48 +38,15 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
 
   await refreshPanelMessage(updatedSession, interaction.client);
 
-  // Post a summary message to the channel
-  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
-  const restaurant = restaurants.find((r) => r.id === updatedSession.lockedRestaurantId);
-
-  const lines: string[] = [
+  const msg = buildNotificationSummary(
+    updatedSession,
+    participants,
+    restaurants,
+    carpools,
     `🔒 **Plan finalized!**`,
-    `⏰ **Depart:** ${updatedSession.departTime} | **Lunch:** ${updatedSession.lunchTime}`,
-    `👥 **Going (${inList.length}):** ${inList.map((p) => p.displayName).join(', ') || 'TBD'}`,
-    `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}`,
-  ];
-
-  // Transportation details
-  const soloDrivers = participants.filter((p) => p.transportStatus === TransportStatus.DrivingAlone);
-  const unassignedRiders = participants.filter(
-    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
   );
 
-  if (carpools.length > 0 || soloDrivers.length > 0 || unassignedRiders.length > 0) {
-    lines.push('', '🚗 **Transportation**');
-
-    for (const carpool of carpools) {
-      const driverName =
-        participants.find((p) => p.userId === carpool.driverId)?.displayName ?? `<@${carpool.driverId}>`;
-      const riderNames = carpool.riders
-        .map((rid) => participants.find((p) => p.userId === rid)?.displayName ?? `<@${rid}>`)
-        .join(', ');
-      const seatsFree = carpool.seats - carpool.riders.length;
-      const seatsLabel = seatsFree > 0 ? `${seatsFree} seat${seatsFree !== 1 ? 's' : ''} open` : 'full';
-      const riderPart = carpool.riders.length > 0 ? ` → ${riderNames}` : ' → no riders yet';
-      lines.push(`  🚗 **${driverName}** (${carpool.musterPoint}, ${seatsLabel})${riderPart}`);
-    }
-
-    if (soloDrivers.length > 0) {
-      lines.push(`  🚘 **Driving alone:** ${soloDrivers.map((p) => p.displayName).join(', ')}`);
-    }
-
-    if (unassignedRiders.length > 0) {
-      lines.push(`  🚌 **Still need a ride:** ${unassignedRiders.map((p) => p.displayName).join(', ')}`);
-    }
-  }
-
-  await interaction.followUp({ content: lines.join('\n') });
+  await interaction.followUp({ content: msg });
 }
 
 /** [🔔 Ping Unanswered] button — mentions users who haven't RSVPed (BR-012). Creator/admin only. */

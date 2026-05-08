@@ -1,13 +1,13 @@
 import cron from 'node-cron';
 import type { Client, TextBasedChannel } from 'discord.js';
 import type { LunchSession } from '../types/index.js';
-import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index.js';
+import { TransportStatus, SessionStatus } from '../types/index.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
-import { getCarpoolsForSession } from '../services/carpoolService.js';
+import { getCarpoolsForSession, autoAssignRides } from '../services/carpoolService.js';
 import { getActiveSessionForGuild, finalizeSession, completeSession, getSessionById } from '../services/sessionService.js';
 import { refreshPanelMessage } from './panelRefresh.js';
-import { format12h } from '../ui/panelBuilder.js';
+import { buildNotificationSummary } from './notificationBuilder.js';
 
 // Map from sessionId to scheduled tasks
 const _jobs = new Map<string, cron.ScheduledTask[]>();
@@ -135,10 +135,24 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
   const channel = rawChannel as TextBasedChannel;
   if (!('send' in channel)) return;
 
-  // Auto-finalize if still in planning status (BR-064)
   let activeSession = await getActiveSessionForGuild(session.guildId);
   if (!activeSession || activeSession.id !== session.id) return; // session already completed
 
+  // Auto-assign unassigned riders before finalizing (BR-065)
+  try {
+    const preParticipants = await getParticipantsForSession(activeSession.id);
+    const unassigned = preParticipants.filter(
+      (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
+    );
+    if (unassigned.length > 0) {
+      await autoAssignRides(activeSession.id);
+      console.log(`[scheduler] Auto-assigned ${unassigned.length} rider(s) at T-15 for session ${activeSession.id}`);
+    }
+  } catch (err) {
+    console.error(`[scheduler] Failed to auto-assign rides at T-15 for session ${activeSession.id}:`, err);
+  }
+
+  // Auto-finalize if still in planning status (BR-064)
   if (activeSession.status === SessionStatus.Planning) {
     try {
       activeSession = await finalizeSession(activeSession);
@@ -146,7 +160,6 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
       console.log(`[scheduler] Auto-finalized session ${activeSession.id} at T-15`);
     } catch (err) {
       console.error(`[scheduler] Failed to auto-finalize session ${activeSession.id}:`, err);
-      // Continue to send reminder even if finalize fails
     }
   }
 
@@ -156,29 +169,13 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
     getCarpoolsForSession(activeSession.id),
   ]);
 
-  const restaurant = activeSession.lockedRestaurantId
-    ? restaurants.find((r) => r.id === activeSession.lockedRestaurantId)
-    : restaurants.sort((a, b) => b.votes.length - a.votes.length)[0];
-
-  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
-  const drivers = participants.filter((p) => p.transportStatus === TransportStatus.CanDrive);
-
-  let msg = `⏰ **T-15 Reminder — Munch Assemble!**\n`;
-  msg += `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}\n`;
-  msg += `🚀 **Departure in 15 minutes** at ${format12h(activeSession.departTime)}\n`;
-  msg += `🕐 **Lunch:** ${format12h(activeSession.lunchTime)}\n`;
-  msg += `👥 **Going (${inList.length}):** ${inList.map((p) => `<@${p.userId}>`).join(', ') || 'No one yet!'}\n`;
-
-  if (drivers.length > 0) {
-    msg += `\n🚗 **Drivers:**\n`;
-    for (const driver of drivers) {
-      const carpool = carpools.find((c) => c.driverId === driver.userId);
-      if (carpool) {
-        const riderMentions = carpool.riders.map((id) => `<@${id}>`).join(', ') || 'No riders assigned';
-        msg += `  • <@${driver.userId}> from **${carpool.musterPoint}** — ${riderMentions}\n`;
-      }
-    }
-  }
+  const msg = buildNotificationSummary(
+    activeSession,
+    participants,
+    restaurants,
+    carpools,
+    `⏰ **T-15 Reminder — Munch Assemble!**`,
+  );
 
   await channel.send(msg);
 }
@@ -195,30 +192,13 @@ async function sendT5Reminder(session: LunchSession, client: Client): Promise<vo
     getCarpoolsForSession(session.id),
   ]);
 
-  const restaurant = session.lockedRestaurantId
-    ? restaurants.find((r) => r.id === session.lockedRestaurantId)
-    : restaurants.sort((a, b) => b.votes.length - a.votes.length)[0];
-
-  const inList = participants.filter((p) => p.attendanceStatus === AttendanceStatus.In);
-  const riders = participants.filter(
-    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
+  const msg = buildNotificationSummary(
+    session,
+    participants,
+    restaurants,
+    carpools,
+    `🚨 **FINAL CALL — 5 minutes to departure!**`,
   );
-
-  let msg = `🚨 **FINAL CALL — 5 minutes to departure!**\n`;
-  msg += `🍔 **Restaurant:** ${restaurant?.name ?? 'TBD'}\n`;
-  msg += `🚀 **Depart:** ${format12h(session.departTime)} | **Lunch:** ${format12h(session.lunchTime)}\n`;
-  msg += `👥 **Going (${inList.length}):** ${inList.map((p) => `<@${p.userId}>`).join(', ')}\n`;
-
-  const driverCount = carpools.length;
-  if (driverCount > 0) {
-    const totalSeats = carpools.reduce((sum, c) => sum + c.seats, 0);
-    const totalRiders = carpools.reduce((sum, c) => sum + c.riders.length, 0);
-    msg += `🚗 **Carpools:** ${driverCount} driver${driverCount !== 1 ? 's' : ''}, ${totalSeats} seats, ${totalRiders} assigned\n`;
-  }
-
-  if (riders.length > 0) {
-    msg += `⚠️ **Still need rides:** ${riders.map((r) => `<@${r.userId}>`).join(', ')}\n`;
-  }
 
   await channel.send(msg);
 }
