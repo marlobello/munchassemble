@@ -150,8 +150,31 @@ describe('buildNotificationSummary', () => {
     expect(result).toContain('Riley');
   });
 
+  it('includes undeclared participants (In/Maybe with no transport)', () => {
+    const undeclared = makeParticipant({
+      userId: 'u-1',
+      displayName: 'Ursula',
+      attendanceStatus: AttendanceStatus.In,
+      transportStatus: TransportStatus.None,
+    });
+
+    const result = buildNotificationSummary(
+      makeSession({ lockedRestaurantId: 'rest-1' }),
+      [undeclared],
+      [makeRestaurant()],
+      [],
+      'Header',
+    );
+
+    expect(result).toContain('Undeclared');
+    expect(result).toContain('Ursula');
+  });
+
   it('omits transportation section when no transport data', () => {
-    const participant = makeParticipant({ transportStatus: TransportStatus.None });
+    const participant = makeParticipant({
+      transportStatus: TransportStatus.None,
+      attendanceStatus: AttendanceStatus.Out,
+    });
 
     const result = buildNotificationSummary(
       makeSession({ lockedRestaurantId: 'rest-1' }),

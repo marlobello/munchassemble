@@ -31,8 +31,13 @@ export function buildNotificationSummary(
   const unassignedRiders = participants.filter(
     (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
   );
+  const undeclared = participants.filter(
+    (p) =>
+      (p.attendanceStatus === AttendanceStatus.In || p.attendanceStatus === AttendanceStatus.Maybe) &&
+      p.transportStatus === TransportStatus.None,
+  );
 
-  if (carpools.length > 0 || soloDrivers.length > 0 || unassignedRiders.length > 0) {
+  if (carpools.length > 0 || soloDrivers.length > 0 || unassignedRiders.length > 0 || undeclared.length > 0) {
     lines.push('', '🚗 **Transportation**');
 
     for (const carpool of carpools) {
@@ -53,6 +58,10 @@ export function buildNotificationSummary(
 
     if (unassignedRiders.length > 0) {
       lines.push(`  🚌 **Still need a ride:** ${unassignedRiders.map((p) => p.displayName).join(', ')}`);
+    }
+
+    if (undeclared.length > 0) {
+      lines.push(`  ❓ **Undeclared:** ${undeclared.map((p) => p.displayName).join(', ')}`);
     }
   }
 

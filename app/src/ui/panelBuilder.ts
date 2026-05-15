@@ -110,14 +110,12 @@ function buildPanelContent(
   );
 
   // Members who are attending (In or Maybe) but haven't declared transport yet.
-  const undeclaredList = isLocked
-    ? []
-    : participants.filter(
-        (p) =>
-          (p.attendanceStatus === AttendanceStatus.In ||
-            p.attendanceStatus === AttendanceStatus.Maybe) &&
-          p.transportStatus === TransportStatus.None,
-      );
+  const undeclaredList = participants.filter(
+    (p) =>
+      (p.attendanceStatus === AttendanceStatus.In ||
+        p.attendanceStatus === AttendanceStatus.Maybe) &&
+      p.transportStatus === TransportStatus.None,
+  );
 
   const hasTransport =
     soloList.length > 0 ||
