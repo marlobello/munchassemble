@@ -1,23 +1,21 @@
-import type { ButtonInteraction, GuildMember, ModalSubmitInteraction } from 'discord.js';
+import type { ButtonInteraction, ModalSubmitInteraction } from 'discord.js';
 import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { getActiveSessionForGuild, finalizeSession, cancelSession, updateSessionTimes } from '../services/sessionService.js';
+import { finalizeSession, cancelSession, updateSessionTimes } from '../services/sessionService.js';
+import { requireActiveSession } from '../utils/interactionHelpers.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
 import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { isCreatorOrAdmin, getMember } from '../utils/permissions.js';
 import { refreshPanelMessage } from '../utils/panelRefresh.js';
-import { AttendanceStatus } from '../types/index.js';
+import { cancelReminders } from '../utils/scheduler.js';
 import { getNoPingListForGuild } from '../db/repositories/noPingRepo.js';
-import { buildNotificationSummary } from '../utils/notificationBuilder.js';
+import { buildNotificationSummary, buildCancelNotice } from '../utils/notificationBuilder.js';
 
 /** [🔒 Finalize Plan] button — locks the session (BR-004). Creator/admin only. */
 export async function handleFinalizeButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({
@@ -52,11 +50,8 @@ export async function handleFinalizeButton(interaction: ButtonInteraction): Prom
 /** [🔔 Ping Unanswered] button — mentions users who haven't RSVPed (BR-012). Creator/admin only. */
 export async function handlePingButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({
@@ -98,11 +93,8 @@ export async function handlePingButton(interaction: ButtonInteraction): Promise<
 /** [❌ Cancel Plan] button — shows a confirmation prompt. Creator/admin only. */
 export async function handleCancelButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({
@@ -129,35 +121,28 @@ export async function handleCancelButton(interaction: ButtonInteraction): Promis
 /** Confirmation button for cancelling a session. */
 export async function handleCancelConfirmButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   await interaction.deferUpdate();
 
   const updatedSession = await cancelSession(session);
   const participants = await getParticipantsForSession(session.id);
 
+  // Stop any pending T-15/T-5/auto-complete jobs for the cancelled session
+  cancelReminders(session.id);
+
   await refreshPanelMessage(updatedSession, interaction.client);
 
   // Notify the channel with an @mention of everyone who was In or Maybe
-  const inOrMaybe = participants.filter(
-    (p) => p.attendanceStatus === AttendanceStatus.In || p.attendanceStatus === AttendanceStatus.Maybe,
+  const { content, mentionIds } = buildCancelNotice(
+    updatedSession,
+    participants,
+    interaction.user.id,
   );
-  const mentionIds = inOrMaybe.map((p) => p.userId);
-  const mentionTags = mentionIds.map((id) => `<@${id}>`).join(' ');
-
-  const lines: string[] = [
-    `❌ **Munch session for ${updatedSession.date} has been cancelled** by <@${interaction.user.id}>.`,
-  ];
-  if (mentionTags) {
-    lines.push(`📢 Heads up: ${mentionTags}`);
-  }
 
   await interaction.followUp({
-    content: lines.join('\n'),
+    content,
     allowedMentions: { users: mentionIds },
   });
 }
@@ -165,11 +150,8 @@ export async function handleCancelConfirmButton(interaction: ButtonInteraction):
 /** [✏️ Edit Time] button — opens the time-edit modal directly. Creator/admin only. */
 export async function handleEditTimeButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({
@@ -211,11 +193,8 @@ export async function handleEditTimeModal(
   client: import('discord.js').Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   const lunchTime = interaction.fields.getTextInputValue('lunchTime').trim();
   const departTime = interaction.fields.getTextInputValue('departTime').trim();

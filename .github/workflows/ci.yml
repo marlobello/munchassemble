@@ -29,6 +29,10 @@ jobs:
         working-directory: app
         run: npm run build
 
+      - name: Lint (ESLint)
+        working-directory: app
+        run: npm run lint
+
       - name: Run tests
         working-directory: app
         run: npm test

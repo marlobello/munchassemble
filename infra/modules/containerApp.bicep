@@ -100,7 +100,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       ]
       scale: {
         minReplicas: 1 // NFR §3 — no cold starts; keep WebSocket alive
-        maxReplicas: 3 // NFR §4 — cap cost
+        // Singleton gateway bot: exactly ONE replica. A second instance would open a
+        // duplicate Discord Gateway connection (double-handling every event) and would
+        // not share the in-memory pending-interaction store or scheduler jobs. Do not raise.
+        maxReplicas: 1
       }
     }
   }

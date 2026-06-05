@@ -9,7 +9,8 @@ import {
   TextDisplayBuilder,
 } from 'discord.js';
 import type { LunchSession, Participant, Restaurant, Carpool } from '../types/index.js';
-import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index.js';
+import { AttendanceStatus, SessionStatus } from '../types/index.js';
+import { categorizeTransport } from '../utils/transport.js';
 
 // ─── Custom ID constants ──────────────────────────────────────────────────────
 // Format: namespace:action:sessionId
@@ -101,21 +102,8 @@ function buildPanelContent(
   lines.push('', '### 📍 Restaurant Voting', restaurantLines);
 
   // ── 5. Transportation ──────────────────────────────────────────────────────
-  const soloList = participants.filter(
-    (p) => p.transportStatus === TransportStatus.DrivingAlone,
-  );
-
-  const unassignedRiders = participants.filter(
-    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
-  );
-
-  // Members who are attending (In or Maybe) but haven't declared transport yet.
-  const undeclaredList = participants.filter(
-    (p) =>
-      (p.attendanceStatus === AttendanceStatus.In ||
-        p.attendanceStatus === AttendanceStatus.Maybe) &&
-      p.transportStatus === TransportStatus.None,
-  );
+  const { soloDrivers: soloList, unassignedRiders, undeclared: undeclaredList } =
+    categorizeTransport(participants);
 
   const hasTransport =
     soloList.length > 0 ||
@@ -218,33 +206,6 @@ function buildVoteButtonRows(
           .setLabel(label)
           .setStyle(ButtonStyle.Primary)
           .setDisabled(locked);
-      }),
-    );
-    rows.push(row);
-  }
-  return rows;
-}
-
-/** Inline "Join [Driver]" buttons — one per carpool with open seats, grouped in rows of 5. */
-function buildJoinCarpoolRows(
-  sessionId: string,
-  carpools: Carpool[],
-  participants: Participant[],
-): ActionRowBuilder<ButtonBuilder>[] {
-  const available = carpools.filter((c) => c.seats > c.riders.length);
-  if (available.length === 0) return [];
-  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
-  for (let i = 0; i < available.length; i += 5) {
-    const chunk = available.slice(i, i + 5);
-    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      chunk.map((c) => {
-        const driverName = participants.find((p) => p.userId === c.driverId)?.displayName ?? 'Driver';
-        const seatsLeft = c.seats - c.riders.length;
-        const label = `🚗 ${driverName} — ${c.musterPoint} (${seatsLeft})`.slice(0, 80);
-        return new ButtonBuilder()
-          .setCustomId(BTN.joinCarpool(sessionId, c.driverId))
-          .setLabel(label)
-          .setStyle(ButtonStyle.Success);
       }),
     );
     rows.push(row);

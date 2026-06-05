@@ -15,12 +15,7 @@ jest.mock('../../../src/db/repositories/restaurantRepo', () => ({
   removeVoteFromAll: jest.fn(),
 }));
 
-jest.mock('../../../src/db/repositories/favoriteRepo', () => ({
-  recordUsage: jest.fn(async () => undefined),
-  getTopFavorites: jest.fn(async () => []),
-}));
-
-import { startSession, getActiveSessionForGuild, completeSession, getCompletedSessionsForGuild } from '../../../src/services/sessionService';
+import { startSession, completeSession, getCompletedSessionsForGuild } from '../../../src/services/sessionService';
 import { addRestaurant } from '../../../src/services/restaurantService';
 import * as sessionRepo from '../../../src/db/repositories/sessionRepo';
 import { SessionStatus } from '../../../src/types';
@@ -41,7 +36,7 @@ describe('sessionService.startSession', () => {
     expect(session.guildId).toBe('guild-1');
   });
 
-  it('throws when an active session already exists', async () => {
+  it('throws when a still-planning session already exists', async () => {
     (sessionRepo.getActiveSessionForGuild as jest.Mock).mockResolvedValueOnce({
       id: 'existing',
       date: '2026-03-29',
@@ -58,13 +53,38 @@ describe('sessionService.startSession', () => {
       }),
     ).rejects.toThrow(/already active/);
   });
+
+  it('auto-completes a finalized (locked) session and creates a new one', async () => {
+    (sessionRepo.getActiveSessionForGuild as jest.Mock).mockResolvedValueOnce({
+      id: 'old-locked',
+      guildId: 'guild-1',
+      date: '2026-03-29',
+      status: SessionStatus.Locked,
+    });
+    const session = await startSession({
+      guildId: 'guild-1',
+      channelId: 'chan-1',
+      creatorId: 'user-1',
+      date: '2026-03-29',
+      lunchTime: '11:15',
+      departTime: '11:00',
+    });
+    // The old locked session is retired via updateSession(status=completed)
+    const completedCall = (sessionRepo.updateSession as jest.Mock).mock.calls.find(
+      ([s]) => s.id === 'old-locked',
+    );
+    expect(completedCall?.[0].status).toBe(SessionStatus.Completed);
+    // And a fresh planning session is created
+    expect(session.status).toBe(SessionStatus.Planning);
+    expect(sessionRepo.createSession as jest.Mock).toHaveBeenCalled();
+  });
 });
 
 describe('restaurantService.addRestaurant', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('creates a restaurant with empty votes', async () => {
-    const result = await addRestaurant('sess-1', 'guild-1', 'Chipotle', 'user-1');
+    const result = await addRestaurant('sess-1', 'Chipotle', 'user-1');
     expect(result.name).toBe('Chipotle');
     expect(result.votes).toEqual([]);
   });

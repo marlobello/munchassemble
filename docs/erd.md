@@ -52,14 +52,6 @@ erDiagram
         string updatedAt
     }
 
-    Favorite {
-        string id PK "guildId::name_normalized"
-        string guildId
-        string name
-        number usageCount
-        string lastUsedAt
-    }
-
     MusterPointConfig {
         string id PK "guildId::name"
         string guildId
@@ -84,7 +76,6 @@ erDiagram
 | `participants` | `/sessionId` | All RSVPs + transport for a session |
 | `restaurants` | `/sessionId` | Voting options + vote tallies |
 | `carpools` | `/sessionId` | One document per driver |
-| `favorites` | `/guildId` | Persists restaurant names across sessions |
 | `musterpoints` | `/guildId` | Guild-configurable pickup locations |
 
 ## Key invariants

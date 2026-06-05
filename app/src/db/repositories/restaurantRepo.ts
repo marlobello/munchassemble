@@ -31,26 +31,42 @@ export async function getRestaurantById(id: string, sessionId: string): Promise<
   }
 }
 
-/** Toggle a vote: adds userId if not present, removes if already voted (BR-021). */
-export async function setVote(
-  restaurantId: string,
-  sessionId: string,
-  userId: string,
-): Promise<Restaurant> {
-  const restaurant = await getRestaurantById(restaurantId, sessionId);
-  if (!restaurant) throw new Error(`Restaurant ${restaurantId} not found`);
+const MAX_VOTE_RETRIES = 5;
 
-  const hadVote = restaurant.votes.includes(userId);
-  const updated: Restaurant = {
-    ...restaurant,
-    votes: hadVote
-      ? restaurant.votes.filter((v) => v !== userId)
-      : [...restaurant.votes, userId],
-  };
-  const { resource } = await container()
-    .item(restaurantId, sessionId)
-    .replace(updated as unknown as ItemDefinition);
-  return resource as unknown as Restaurant;
+/**
+ * Apply a vote mutation to a single restaurant with optimistic concurrency.
+ * Re-reads and retries on a 412 (ETag mismatch) so concurrent voters don't
+ * clobber each other's entries. Returns the updated restaurant, or null if it
+ * no longer exists.
+ */
+async function mutateVotes(
+  sessionId: string,
+  restaurantId: string,
+  mutate: (votes: string[]) => string[] | null,
+): Promise<Restaurant | null> {
+  for (let attempt = 0; attempt < MAX_VOTE_RETRIES; attempt++) {
+    const restaurant = await getRestaurantById(restaurantId, sessionId);
+    if (!restaurant) return null;
+
+    const nextVotes = mutate(restaurant.votes);
+    if (nextVotes === null) return restaurant; // no-op (e.g. already in desired state)
+
+    const updated: Restaurant = { ...restaurant, votes: nextVotes };
+    const options = restaurant._etag
+      ? { accessCondition: { type: 'IfMatch' as const, condition: restaurant._etag } }
+      : undefined;
+    try {
+      const { resource } = await container()
+        .item(restaurantId, sessionId)
+        .replace(updated as unknown as ItemDefinition, options);
+      return resource as unknown as Restaurant;
+    } catch (err) {
+      const code = (err as { code?: number }).code;
+      if (code === 412 && attempt < MAX_VOTE_RETRIES - 1) continue; // ETag mismatch — retry
+      throw err;
+    }
+  }
+  throw new Error(`Failed to update votes for ${restaurantId} after ${MAX_VOTE_RETRIES} attempts`);
 }
 
 /** Remove userId's vote from whichever restaurant they previously voted for (BR-021 — change vote). */
@@ -58,10 +74,11 @@ export async function removeVoteFromAll(sessionId: string, userId: string): Prom
   const restaurants = await getRestaurantsForSession(sessionId);
   const voted = restaurants.filter((r) => r.votes.includes(userId));
   await Promise.all(
-    voted.map(async (r) => {
-      const updated = { ...r, votes: r.votes.filter((v) => v !== userId) };
-      await container().item(r.id, sessionId).replace(updated as unknown as ItemDefinition);
-    }),
+    voted.map((r) =>
+      mutateVotes(sessionId, r.id, (votes) =>
+        votes.includes(userId) ? votes.filter((v) => v !== userId) : null,
+      ),
+    ),
   );
 }
 
@@ -72,11 +89,9 @@ export async function castVote(
   userId: string,
 ): Promise<Restaurant> {
   await removeVoteFromAll(sessionId, userId);
-  const restaurant = await getRestaurantById(restaurantId, sessionId);
-  if (!restaurant) throw new Error(`Restaurant ${restaurantId} not found`);
-  const updated: Restaurant = { ...restaurant, votes: [...restaurant.votes, userId] };
-  const { resource } = await container()
-    .item(restaurantId, sessionId)
-    .replace(updated as unknown as ItemDefinition);
-  return resource as unknown as Restaurant;
+  const result = await mutateVotes(sessionId, restaurantId, (votes) =>
+    votes.includes(userId) ? null : [...votes, userId],
+  );
+  if (!result) throw new Error(`Restaurant ${restaurantId} not found`);
+  return result;
 }

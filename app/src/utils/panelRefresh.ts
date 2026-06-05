@@ -7,6 +7,7 @@ import { getRestaurantsForSession } from '../services/restaurantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getNoPingListForGuild } from '../db/repositories/noPingRepo.js';
 import { buildPanel } from '../ui/panelBuilder.js';
+import { logger } from './logger.js';
 
 /**
  * Returns display names of guild members who have not responded to the session.
@@ -22,7 +23,7 @@ export async function fetchNoResponseNames(
 ): Promise<string[]> {
   const guild = client.guilds.cache.get(guildId);
   if (!guild) {
-    console.warn('[panelRefresh] Guild not in cache:', guildId);
+    logger.warn('[panelRefresh] Guild not in cache:', guildId);
     return [];
   }
 
@@ -30,7 +31,7 @@ export async function fetchNoResponseNames(
   // The GuildMembers intent ensures the cache is populated on connect for small guilds.
   const members = guild.members.cache;
   if (members.size === 0) {
-    console.warn('[panelRefresh] Guild member cache is empty; skipping No Response names');
+    logger.warn('[panelRefresh] Guild member cache is empty; skipping No Response names');
     return [];
   }
 
@@ -59,11 +60,11 @@ export async function fetchNoResponseNames(
  */
 export async function refreshPanelMessage(session: LunchSession, client: Client): Promise<void> {
   if (!session.messageId) {
-    console.warn('[panelRefresh] No messageId on session', session.id);
+    logger.warn('[panelRefresh] No messageId on session', session.id);
     return;
   }
 
-  console.log('[panelRefresh] Refreshing panel for session', session.id);
+  logger.info('[panelRefresh] Refreshing panel for session', session.id);
 
   const [participants, restaurants, carpools] = await Promise.all([
     getParticipantsForSession(session.id),
@@ -76,7 +77,7 @@ export async function refreshPanelMessage(session: LunchSession, client: Client)
     try {
       noResponseNames = await fetchNoResponseNames(session.guildId, participants, client);
     } catch (err) {
-      console.error('[panelRefresh] fetchNoResponseNames failed (continuing without):', err);
+      logger.error('[panelRefresh] fetchNoResponseNames failed (continuing without):', err);
     }
   }
 
@@ -95,8 +96,8 @@ export async function refreshPanelMessage(session: LunchSession, client: Client)
       Routes.channelMessage(session.channelId, session.messageId),
       { body },
     );
-    console.log('[panelRefresh] Panel updated successfully for session', session.id);
+    logger.info('[panelRefresh] Panel updated successfully for session', session.id);
   } catch (err) {
-    console.error('[panelRefresh] REST patch failed:', err);
+    logger.error('[panelRefresh] REST patch failed:', err);
   }
 }

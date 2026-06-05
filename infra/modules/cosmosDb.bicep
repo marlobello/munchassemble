@@ -114,16 +114,6 @@ module restaurantOptionContainer 'cosmosContainer.bicep' = {
   }
 }
 
-module favoriteContainer 'cosmosContainer.bicep' = {
-  name: 'cosmos-container-favorites'
-  params: {
-    accountName: cosmosAccount.name
-    databaseName: database.name
-    containerName: 'favorites'
-    partitionKey: '/guildId'
-  }
-}
-
 module carpoolContainer 'cosmosContainer.bicep' = {
   name: 'cosmos-container-carpools'
   params: {

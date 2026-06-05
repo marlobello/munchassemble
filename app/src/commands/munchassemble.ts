@@ -13,14 +13,17 @@ import {
   getActiveSessionForGuild,
   attachMessageId,
   getCompletedSessionsForGuild,
-  completeSession,
+  cancelSession,
+  getLocalToday,
 } from '../services/sessionService.js';
 import { getParticipantsForSession } from '../services/participantService.js';
 import { getCarpoolsForSession } from '../services/carpoolService.js';
 import { getRestaurantsForSession, getRestaurantById } from '../services/restaurantService.js';
 import { buildPanel, format12h } from '../ui/panelBuilder.js';
-import { scheduleReminders } from '../utils/scheduler.js';
-import { fetchNoResponseNames } from '../utils/panelRefresh.js';
+import { scheduleReminders, cancelReminders } from '../utils/scheduler.js';
+import { fetchNoResponseNames, refreshPanelMessage } from '../utils/panelRefresh.js';
+import { buildCancelNotice } from '../utils/notificationBuilder.js';
+import { logger } from '../utils/logger.js';
 import { AttendanceStatus, TransportStatus, SessionStatus } from '../types/index.js';
 import { isAdmin, getMember } from '../utils/permissions.js';
 
@@ -89,15 +92,15 @@ async function handleCreate(
   guildId: string,
 ): Promise<void> {
   const existing = await getActiveSessionForGuild(guildId);
-  if (existing) {
+  if (existing && existing.status === SessionStatus.Planning) {
     await interaction.reply({
-      content: `⚠️ There's already an active session for today (${existing.date}). Finalize it first with the **🔒 Finalize Plan** button on the session panel.`,
+      content: `⚠️ There's already an active session for **${existing.date}**. Finalize it (🔒 Finalize Plan) or cancel it on the session panel first.`,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
 
   const modal = new ModalBuilder()
     .setCustomId('modal:create_session')
@@ -162,11 +165,32 @@ async function handleCancel(
     return;
   }
 
-  await completeSession(session);
-  await interaction.reply({
-    content: `✅ Session for **${session.date}** has been cancelled. You can now create a new one.`,
-    flags: MessageFlags.Ephemeral,
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const updated = await cancelSession(session);
+  const participants = await getParticipantsForSession(session.id);
+
+  // Stop any pending T-15/T-5/auto-complete jobs for the cancelled session
+  cancelReminders(session.id);
+
+  // Update the live panel so its buttons disable and the status flips to Cancelled
+  await refreshPanelMessage(updated, interaction.client);
+
+  // Confirm to the canceller first so a failed public notice never breaks their command
+  await interaction.editReply({
+    content: `✅ Session for **${updated.date}** has been cancelled. You can now create a new one.`,
   });
+
+  // Public channel notice, matching the panel ❌ Cancel button behaviour
+  const { content, mentionIds } = buildCancelNotice(updated, participants, interaction.user.id);
+  const channel = interaction.channel;
+  if (channel && 'send' in channel) {
+    try {
+      await channel.send({ content, allowedMentions: { users: mentionIds } });
+    } catch (err) {
+      logger.error('[munchassemble] Failed to post cancellation notice:', err);
+    }
+  }
 }
 
 /** /munchassemble status — shows live session snapshot for all users. */
@@ -350,7 +374,7 @@ export async function handleCreateSessionModal(
     });
     return;
   }
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalToday();
   if (date < today) {
     await interaction.reply({
       content: `❌ You can't schedule a session in the past. Today is **${today}**.`,

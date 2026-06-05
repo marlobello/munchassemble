@@ -58,7 +58,7 @@ Available to **all users**. Subcommands:
 | `/munchassemble history list` | Show the last 10 completed sessions (date, restaurant, attendee count) |
 | `/munchassemble history details <date>` | Show the full attendee list and details for a session on a given date (YYYY-MM-DD) |
 
-> Only one active session per server at a time. `/munchassemble create` returns an error if a session is already active.
+> Only one **in-progress** planning session per server at a time. `/munchassemble create` is blocked while a session is still being planned — finalize (🔒) or cancel it first. Once a session is **finalized** or **cancelled**, creating a new one is allowed (a finalized session is automatically retired).
 
 #### `/munchassemble create` modal fields
 

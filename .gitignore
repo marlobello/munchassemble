@@ -36,3 +36,6 @@ Thumbs.db
 
 # Azure developer CLI
 .azure/
+
+# Compiled Bicep ARM output (generated from infra/*.bicep via `az bicep build`)
+infra/main.json

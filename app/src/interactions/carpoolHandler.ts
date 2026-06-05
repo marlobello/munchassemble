@@ -11,7 +11,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
 } from 'discord.js';
-import { getActiveSessionForGuild } from '../services/sessionService.js';
+import { requireActiveSession } from '../utils/interactionHelpers.js';
 import {
   registerDriver,
   clearCarpoolRole,
@@ -43,11 +43,8 @@ export async function handleDrivingAloneButton(
   client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   const member = interaction.member as import('discord.js').GuildMember;
 
@@ -98,15 +95,12 @@ export async function handleDrivingAloneButton(
  */
 export async function handleDrivingButton(
   interaction: ButtonInteraction,
-  client: Client,
+  _client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
 
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   const participant = await getParticipant(session.id, interaction.user.id);
   if (!canHostCarpool(participant)) {
@@ -197,11 +191,8 @@ export async function handleDrivingModal(
   const type = parts[1]; // 'driving_full' | 'driving_seats'
   const sessionId = parts[2];
 
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   const seatsRaw = interaction.fields.getTextInputValue('seats').trim();
   const seats = parseInt(seatsRaw, 10);
@@ -234,7 +225,18 @@ export async function handleDrivingModal(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
-    await registerDriver(session.id, interaction.user.id, seats, musterPoint);
+    const member =
+      interaction.member instanceof GuildMember ? interaction.member : null;
+    const displayName =
+      member?.displayName ?? interaction.user.displayName ?? interaction.user.username;
+    await registerDriver(
+      session.id,
+      interaction.user.id,
+      seats,
+      musterPoint,
+      interaction.user.username,
+      displayName,
+    );
 
     // Consume the pending interaction to clean up the store.
     takePendingInteraction(`driving:${sessionId}:${interaction.user.id}`);
@@ -266,11 +268,8 @@ export async function handleNeedRideButton(
   client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   const participant = await getParticipant(session.id, interaction.user.id);
 
@@ -355,11 +354,8 @@ export async function handleNeedRideSelect(
   const [, , sessionId] = interaction.customId.split(':');
   const value = interaction.values[0];
 
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   await interaction.deferUpdate();
 
@@ -406,11 +402,8 @@ export async function handleJoinCarpoolButton(
   const sessionId = parts[2];
   const driverId = parts[3];
 
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   // State machine check before deferring (fast read)
   const participant = await getParticipant(session.id, interaction.user.id);
@@ -451,11 +444,8 @@ export async function handleCarpoolSwitchButton(
   client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   await interaction.deferUpdate();
   await clearCarpoolRole(session.id, interaction.user.id);
@@ -470,11 +460,8 @@ export async function handleAutoAssignButton(
   client: Client,
 ): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({

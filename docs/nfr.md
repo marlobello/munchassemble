@@ -12,19 +12,19 @@
 - **Availability target:** Best effort — no formal SLA commitment. The app is non-critical; downtime is acceptable outside of active game sessions.
 - **RPO / RTO:** No formal targets. Recovery is via redeployment from the CI/CD pipeline. Cosmos DB automatic backups provide a soft RPO of ~1 hour (platform default).
 - **Multi-region strategy:** Single region (see §6). No active–active or active–passive failover planned.
-- **Resilience baseline:** Container App configured with `minReplicas: 1` to eliminate cold-start latency and reduce Discord timeout failures.
+- **Resilience baseline:** Container App runs as a **single replica** (`minReplicas: 1`, `maxReplicas: 1`). The bot holds one Discord Gateway WebSocket and keeps multi-step interaction state and scheduler jobs in memory, so it must not be horizontally scaled — a second replica would duplicate the gateway connection and double-handle events. `minReplicas: 1` also eliminates cold-start latency. On revision swaps the bot handles **SIGTERM** for a graceful shutdown (disconnect gateway, stop cron jobs, close the health server).
 
 ## 3. Performance
 
 - **Latency target:** < 2 seconds end-to-end from Discord HTTP request receipt to HTTP response. This provides a safe buffer under Discord's hard 3-second interaction timeout.
 - **Throughput target:** Designed for low-volume, bursty use (a single Discord server / small group). No high-throughput SLA required.
-- **Scaling expectations:** Container Apps scales from 1 to a small maximum (e.g., 3 replicas) based on concurrent HTTP requests. Scale-to-zero is disabled to meet the latency target.
+- **Scaling expectations:** Runs as a **single replica** (`minReplicas: 1`, `maxReplicas: 1`). The bot is a stateful singleton (one Discord Gateway connection + in-memory interaction/scheduler state) and is intentionally **not** horizontally scaled. Scale-to-zero is disabled to meet the latency target.
 
 ## 4. Cost
 
 - **Monthly budget:** < $20 USD/month for all Azure resources combined.
 - **Guardrails:**
-  - Container Apps: `minReplicas: 1`, `maxReplicas: 3`; use the smallest available CPU/memory profile (e.g., 0.25 vCPU / 0.5 Gi).
+  - Container Apps: `minReplicas: 1`, `maxReplicas: 1` (singleton gateway bot); use the smallest available CPU/memory profile (e.g., 0.25 vCPU / 0.5 Gi).
   - Cosmos DB: Serverless capacity mode — pay per RU, no provisioned throughput.
   - Application Insights: Sampling enabled; retain logs for 30 days (free tier cap: 5 GB/month).
   - Azure Key Vault: Standard tier.

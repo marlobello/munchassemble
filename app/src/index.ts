@@ -51,12 +51,13 @@ import {
   handleCarpoolSwitchButton,
   handleAutoAssignButton,
 } from './interactions/carpoolHandler.js';
-import { scheduleReminders } from './utils/scheduler.js';
+import { scheduleReminders, cancelAllReminders } from './utils/scheduler.js';
 import { startHealthServer } from './utils/healthServer.js';
+import { logger } from './utils/logger.js';
 
 process.on('unhandledRejection', (reason) => {
   const msg = reason instanceof Error ? reason.message : String(reason);
-  console.error('[bot] Unhandled promise rejection:', msg);
+  logger.error('[bot] Unhandled promise rejection:', msg);
 });
 
 async function registerCommands(appId: string, guildId: string, token: string): Promise<void> {
@@ -65,9 +66,9 @@ async function registerCommands(appId: string, guildId: string, token: string): 
     await rest.put(Routes.applicationGuildCommands(appId, guildId), {
       body: [munchAssembleCommand.toJSON(), munchAssembleConfigCommand.toJSON()],
     });
-    console.log(`[bot] Commands registered for guild ${guildId}`);
+    logger.info(`[bot] Commands registered for guild ${guildId}`);
   } catch (err) {
-    console.error(`[bot] Failed to register commands for guild ${guildId}:`, err);
+    logger.error(`[bot] Failed to register commands for guild ${guildId}:`, err);
   }
 }
 
@@ -77,7 +78,7 @@ async function main(): Promise<void> {
 
   // Start health HTTP server before connecting to Discord (O2 — liveness probe)
   const healthPort = parseInt(process.env.HEALTH_PORT ?? '3000', 10);
-  startHealthServer(healthPort);
+  const healthServer = startHealthServer(healthPort);
 
   const client = new Client({
     intents: [
@@ -86,8 +87,28 @@ async function main(): Promise<void> {
     ],
   });
 
+  // Graceful shutdown — Container Apps sends SIGTERM on every revision swap.
+  // Cleanly stop cron jobs, disconnect the gateway, and close the health server.
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`[bot] Received ${signal} — shutting down gracefully...`);
+    try {
+      cancelAllReminders();
+      await client.destroy();
+      healthServer.close();
+    } catch (err) {
+      logger.error('[bot] Error during shutdown:', err);
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+
   client.once(Events.ClientReady, async (c) => {
-    console.log(`🤖 Munch Assemble is online as ${c.user.tag}`);
+    logger.info(`🤖 Munch Assemble is online as ${c.user.tag}`);
 
     // Pre-populate guild member caches so that per-interaction lookups can use
     // guild.members.cache instead of guild.members.fetch(), avoiding gateway
@@ -95,27 +116,27 @@ async function main(): Promise<void> {
     for (const guild of c.guilds.cache.values()) {
       try {
         await guild.members.fetch();
-        console.log(`[bot] Cached ${guild.members.cache.size} members for guild ${guild.id}`);
+        logger.info(`[bot] Cached ${guild.members.cache.size} members for guild ${guild.id}`);
       } catch (err) {
-        console.error(`[bot] Failed to fetch members for guild ${guild.id}:`, err);
+        logger.error(`[bot] Failed to fetch members for guild ${guild.id}:`, err);
       }
     }
 
     // Expire stale sessions on startup (BR-005)
     try {
       await expireOldSessions();
-      console.log('[bot] Stale sessions expired');
+      logger.info('[bot] Stale sessions expired');
     } catch (err) {
-      console.error('[bot] Failed to expire stale sessions:', err);
+      logger.error('[bot] Failed to expire stale sessions:', err);
     }
 
     // Nightly midnight cron — expire any sessions whose date has now passed (BR-005)
     cron.schedule('0 0 * * *', async () => {
       try {
         await expireOldSessions();
-        console.log('[bot] Nightly session expiry ran');
+        logger.info('[bot] Nightly session expiry ran');
       } catch (err) {
-        console.error('[bot] Nightly session expiry failed:', err);
+        logger.error('[bot] Nightly session expiry failed:', err);
       }
     });
 
@@ -125,10 +146,10 @@ async function main(): Promise<void> {
         const session = await getActiveSessionForGuild(guild.id);
         if (session) {
           scheduleReminders(session, client);
-          console.log(`[bot] Rescheduled reminders for active session ${session.id} in guild ${guild.id}`);
+          logger.info(`[bot] Rescheduled reminders for active session ${session.id} in guild ${guild.id}`);
         }
       } catch (err) {
-        console.error(`[bot] Error during startup for guild ${guild.id}:`, err);
+        logger.error(`[bot] Error during startup for guild ${guild.id}:`, err);
       }
     }
 
@@ -153,7 +174,7 @@ async function main(): Promise<void> {
     try {
       await routeInteraction(interaction, client);
     } catch (err) {
-      console.error('[bot] Error handling interaction:', err);
+      logger.error('[bot] Error handling interaction:', err);
     }
   });
 
@@ -231,6 +252,6 @@ async function routeInteraction(interaction: Interaction, client: Client): Promi
 }
 
 main().catch((err) => {
-  console.error('[bot] Fatal startup error:', err);
+  logger.error('[bot] Fatal startup error:', err);
   process.exit(1);
 });

@@ -12,6 +12,7 @@ import {
   getParticipantsForSession,
 } from '../db/repositories/participantRepo.js';
 import { canHostCarpool, canRequestTransport } from '../utils/stateRules.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Register the user as a driver for the session.
@@ -23,6 +24,8 @@ export async function registerDriver(
   driverId: string,
   seats: number,
   musterPoint: string,
+  username: string,
+  displayName: string,
 ): Promise<Carpool> {
   const now = new Date().toISOString();
 
@@ -35,13 +38,16 @@ export async function registerDriver(
     throw new Error("You need to be **In** to host a carpool.");
   }
 
-  // If user was previously a rider in someone else's carpool, remove them from it
+  // If user was previously a rider in someone else's carpool, remove them from it.
+  // Remember the driver so we can restore the seat if the participant write fails.
+  let removedFromDriverId: string | null = null;
   if (p?.assignedDriverId) {
     const prevCarpool = await getCarpoolByDriver(sessionId, p.assignedDriverId);
     if (prevCarpool) {
       prevCarpool.riders = prevCarpool.riders.filter((id) => id !== driverId);
       prevCarpool.updatedAt = now;
       await upsertCarpool(prevCarpool);
+      removedFromDriverId = p.assignedDriverId;
     }
   }
 
@@ -57,26 +63,47 @@ export async function registerDriver(
   };
   await upsertCarpool(carpool);
 
-  // Update participant transport status — no auto-promote; attendance stays as-is for existing In participants
-  const autoPromote = !p?.attendanceStatus;
-  if (p) {
-    try {
-      await upsertParticipant({
+  // Update (or create) the participant record so the driver always has a matching
+  // attendance entry. Brand-new (unset) drivers are auto-promoted to In — otherwise
+  // the carpool record would be orphaned with no participant, leaving the driver
+  // absent from attendance and later shown as "Undeclared" transport.
+  const participant: Participant = p
+    ? {
         ...p,
         transportStatus: TransportStatus.CanDrive,
-        attendanceStatus: autoPromote ? AttendanceStatus.In : p.attendanceStatus,
         assignedDriverId: undefined,
         updatedAt: now,
-      });
-    } catch (err) {
-      // Compensating rollback: remove carpool record if participant update failed
-      try {
-        await deleteCarpool(sessionId, driverId);
-      } catch (rollbackErr) {
-        console.error('[registerDriver] Rollback failed — carpool record may be orphaned:', rollbackErr);
       }
-      throw err;
+    : {
+        id: `${sessionId}::${driverId}`,
+        sessionId,
+        userId: driverId,
+        username,
+        displayName,
+        attendanceStatus: AttendanceStatus.In,
+        transportStatus: TransportStatus.CanDrive,
+        updatedAt: now,
+      };
+
+  try {
+    await upsertParticipant(participant);
+  } catch (err) {
+    // Compensating rollback: remove the new carpool record and restore the rider
+    // to their previous carpool so the failed write leaves no inconsistency.
+    try {
+      await deleteCarpool(sessionId, driverId);
+      if (removedFromDriverId) {
+        const prevCarpool = await getCarpoolByDriver(sessionId, removedFromDriverId);
+        if (prevCarpool && !prevCarpool.riders.includes(driverId)) {
+          prevCarpool.riders.push(driverId);
+          prevCarpool.updatedAt = new Date().toISOString();
+          await upsertCarpool(prevCarpool);
+        }
+      }
+    } catch (rollbackErr) {
+      logger.error('[registerDriver] Rollback failed — carpool records may be inconsistent:', rollbackErr);
     }
+    throw err;
   }
 
   return carpool;
@@ -327,7 +354,7 @@ export async function assignRiderToDriver(
         await upsertCarpool(rollbackCarpool);
       }
     } catch (rollbackErr) {
-      console.error('[assignRiderToDriver] Rollback failed — carpool may be inconsistent:', rollbackErr);
+      logger.error('[assignRiderToDriver] Rollback failed — carpool may be inconsistent:', rollbackErr);
     }
     throw err;
   }

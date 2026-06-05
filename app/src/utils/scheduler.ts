@@ -8,6 +8,7 @@ import { getCarpoolsForSession, autoAssignRides } from '../services/carpoolServi
 import { getActiveSessionForGuild, finalizeSession, completeSession, getSessionById } from '../services/sessionService.js';
 import { refreshPanelMessage } from './panelRefresh.js';
 import { buildNotificationSummary } from './notificationBuilder.js';
+import { logger } from './logger.js';
 
 // Map from sessionId to scheduled tasks
 const _jobs = new Map<string, cron.ScheduledTask[]>();
@@ -37,7 +38,7 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
       task.stop();
     });
     jobs.push(task);
-    console.log(`[scheduler] T-15 reminder scheduled for session ${session.id} at ${t15}`);
+    logger.info(`[scheduler] T-15 reminder scheduled for session ${session.id} at ${t15}`);
   }
 
   if (t5) {
@@ -46,7 +47,7 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
       task.stop();
     });
     jobs.push(task);
-    console.log(`[scheduler] T-5 reminder scheduled for session ${session.id} at ${t5}`);
+    logger.info(`[scheduler] T-5 reminder scheduled for session ${session.id} at ${t5}`);
   }
 
   if (autoComplete) {
@@ -55,7 +56,7 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
       task.stop();
     });
     jobs.push(task);
-    console.log(`[scheduler] Auto-complete scheduled for session ${session.id} at ${autoComplete}`);
+    logger.info(`[scheduler] Auto-complete scheduled for session ${session.id} at ${autoComplete}`);
   }
 
   if (jobs.length > 0) {
@@ -69,8 +70,16 @@ export function cancelReminders(sessionId: string): void {
   if (jobs) {
     jobs.forEach((j) => j.stop());
     _jobs.delete(sessionId);
-    console.log(`[scheduler] Cancelled reminders for session ${sessionId}`);
+    logger.info(`[scheduler] Cancelled reminders for session ${sessionId}`);
   }
+}
+
+/** Stop every scheduled reminder job (used during graceful shutdown). */
+export function cancelAllReminders(): void {
+  for (const jobs of _jobs.values()) {
+    jobs.forEach((j) => j.stop());
+  }
+  _jobs.clear();
 }
 
 /** Build a node-cron expression for N minutes before departure. Returns null if time has passed. */
@@ -122,9 +131,9 @@ async function autoCompleteSession(session: LunchSession): Promise<void> {
     const current = await getSessionById(session.id, session.guildId);
     if (!current || current.status === SessionStatus.Completed) return;
     await completeSession(current);
-    console.log(`[scheduler] Auto-completed session ${session.id}`);
+    logger.info(`[scheduler] Auto-completed session ${session.id}`);
   } catch (err) {
-    console.error(`[scheduler] Failed to auto-complete session ${session.id}:`, err);
+    logger.error(`[scheduler] Failed to auto-complete session ${session.id}:`, err);
   }
 }
 
@@ -146,10 +155,10 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
     );
     if (unassigned.length > 0) {
       await autoAssignRides(activeSession.id);
-      console.log(`[scheduler] Auto-assigned ${unassigned.length} rider(s) at T-15 for session ${activeSession.id}`);
+      logger.info(`[scheduler] Auto-assigned ${unassigned.length} rider(s) at T-15 for session ${activeSession.id}`);
     }
   } catch (err) {
-    console.error(`[scheduler] Failed to auto-assign rides at T-15 for session ${activeSession.id}:`, err);
+    logger.error(`[scheduler] Failed to auto-assign rides at T-15 for session ${activeSession.id}:`, err);
   }
 
   // Auto-finalize if still in planning status (BR-064)
@@ -157,9 +166,9 @@ async function sendT15Reminder(session: LunchSession, client: Client): Promise<v
     try {
       activeSession = await finalizeSession(activeSession);
       await refreshPanelMessage(activeSession, client);
-      console.log(`[scheduler] Auto-finalized session ${activeSession.id} at T-15`);
+      logger.info(`[scheduler] Auto-finalized session ${activeSession.id} at T-15`);
     } catch (err) {
-      console.error(`[scheduler] Failed to auto-finalize session ${activeSession.id}:`, err);
+      logger.error(`[scheduler] Failed to auto-finalize session ${activeSession.id}:`, err);
     }
   }
 
@@ -186,14 +195,19 @@ async function sendT5Reminder(session: LunchSession, client: Client): Promise<vo
   const channel = rawChannel as TextBasedChannel;
   if (!('send' in channel)) return;
 
+  // Guard against stale jobs: only post if this session is still the active one
+  // (not cancelled, completed, or replaced by a newer session).
+  const activeSession = await getActiveSessionForGuild(session.guildId);
+  if (!activeSession || activeSession.id !== session.id) return;
+
   const [participants, restaurants, carpools] = await Promise.all([
-    getParticipantsForSession(session.id),
-    getRestaurantsForSession(session.id),
-    getCarpoolsForSession(session.id),
+    getParticipantsForSession(activeSession.id),
+    getRestaurantsForSession(activeSession.id),
+    getCarpoolsForSession(activeSession.id),
   ]);
 
   const msg = buildNotificationSummary(
-    session,
+    activeSession,
     participants,
     restaurants,
     carpools,

@@ -29,16 +29,3 @@ export async function removeNoPingEntry(guildId: string, userId: string): Promis
   const id = `${guildId}::${userId}`;
   await container().item(id, guildId).delete();
 }
-
-export async function isNoPingUser(guildId: string, userId: string): Promise<boolean> {
-  const id = `${guildId}::${userId}`;
-  try {
-    const { resource } = await container().item(id, guildId).read<NoPingEntry>();
-    return !!resource;
-  } catch (err) {
-    if (err instanceof Error && 'code' in err && (err as { code: number }).code === 404) {
-      return false;
-    }
-    throw err;
-  }
-}

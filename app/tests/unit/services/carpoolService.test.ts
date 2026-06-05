@@ -175,14 +175,14 @@ describe('registerDriver', () => {
     (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
       makeParticipant({ attendanceStatus: AttendanceStatus.Out }),
     );
-    await expect(registerDriver('sess', 'user-a', 3, 'Garage A')).rejects.toThrow(/In/);
+    await expect(registerDriver('sess', 'user-a', 3, 'Garage A', 'u', 'U')).rejects.toThrow(/In/);
   });
 
   it('throws when user is Maybe', async () => {
     (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
       makeParticipant({ attendanceStatus: AttendanceStatus.Maybe }),
     );
-    await expect(registerDriver('sess', 'user-a', 3, 'Garage A')).rejects.toThrow(/In/);
+    await expect(registerDriver('sess', 'user-a', 3, 'Garage A', 'u', 'U')).rejects.toThrow(/In/);
   });
 
   it('registers driver and creates carpool for In user', async () => {
@@ -191,7 +191,7 @@ describe('registerDriver', () => {
     );
     (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(null);
 
-    const result = await registerDriver('sess', 'user-a', 3, 'Garage A');
+    const result = await registerDriver('sess', 'user-a', 3, 'Garage A', 'u', 'U');
 
     expect(result.driverId).toBe('user-a');
     expect(result.seats).toBe(3);
@@ -200,6 +200,36 @@ describe('registerDriver', () => {
     expect(participantRepo.upsertParticipant).toHaveBeenCalledWith(
       expect.objectContaining({ transportStatus: TransportStatus.CanDrive }),
     );
+  });
+
+  it('creates an In participant for a brand-new (unset) driver — no orphan carpool', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(null);
+    (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(null);
+
+    await registerDriver('sess', 'new-user', 3, 'Garage A', 'newuser', 'New User');
+
+    // A participant record must be created so the driver shows as In with CanDrive transport
+    expect(participantRepo.upsertParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 'new-user',
+        username: 'newuser',
+        displayName: 'New User',
+        attendanceStatus: AttendanceStatus.In,
+        transportStatus: TransportStatus.CanDrive,
+      }),
+    );
+  });
+
+  it('rolls back carpool if participant upsert fails for a new driver', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(null);
+    (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(null);
+    (participantRepo.upsertParticipant as jest.Mock).mockRejectedValueOnce(new Error('DB error'));
+
+    await expect(
+      registerDriver('sess', 'new-user', 3, 'Garage A', 'newuser', 'New User'),
+    ).rejects.toThrow('DB error');
+
+    expect(carpoolRepo.deleteCarpool).toHaveBeenCalledWith('sess', 'new-user');
   });
 });
 

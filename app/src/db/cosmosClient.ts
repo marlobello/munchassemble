@@ -28,7 +28,6 @@ export const CONTAINERS = {
   restaurants: 'restaurants',
   carpools: 'carpools',
   musterpoints: 'musterpoints',
-  favorites: 'favorites',
   restaurantoptions: 'restaurantoptions',
   noping: 'noping',
 } as const;

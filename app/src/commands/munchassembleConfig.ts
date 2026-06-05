@@ -5,9 +5,6 @@ import {
 } from 'discord.js';
 import { getMusterPoints, addMusterPoint, removeMusterPoint } from '../services/musterService.js';
 import { getRestaurantOptions, addRestaurantOption, removeRestaurantOption } from '../services/restaurantOptionService.js';
-import {
-  getActiveSessionForGuild,
-} from '../services/sessionService.js';
 import { getNoPingListForGuild, addNoPingEntry, removeNoPingEntry } from '../db/repositories/noPingRepo.js';
 import { isAdmin, getMember } from '../utils/permissions.js';
 

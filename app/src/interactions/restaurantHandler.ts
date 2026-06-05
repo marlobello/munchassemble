@@ -1,6 +1,5 @@
 import type {
   ButtonInteraction,
-  ModalSubmitInteraction,
   StringSelectMenuInteraction,
 } from 'discord.js';
 import {
@@ -10,6 +9,7 @@ import {
   StringSelectMenuOptionBuilder,
 } from 'discord.js';
 import { getActiveSessionForGuild, lockRestaurant } from '../services/sessionService.js';
+import { requireActiveSession } from '../utils/interactionHelpers.js';
 import {
   addRestaurant,
   voteForRestaurant,
@@ -61,11 +61,8 @@ export async function handleVoteForButton(
 /** [➕ Suggest Spot] button — shows configured restaurant options not already in session (BR-020). */
 export async function handleAddSpotButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   const [configuredOptions, existing] = await Promise.all([
     getRestaurantOptions(interaction.guildId!),
@@ -137,7 +134,7 @@ export async function handleAddSpotSelect(
   }
 
   try {
-    await addRestaurant(session.id, session.guildId, name, interaction.user.id);
+    await addRestaurant(session.id, name, interaction.user.id);
   } catch (err: unknown) {
     if (err instanceof DuplicateError) {
       await interaction.editReply({ content: `⚠️ **${name}** is already on the list!`, components: [] });
@@ -157,11 +154,8 @@ export async function handleAddSpotSelect(
 /** [🔒 Lock Choice] button — locks the leading restaurant (BR-023). */
 export async function handleLockChoiceButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({
@@ -191,11 +185,8 @@ export async function handleLockChoiceButton(interaction: ButtonInteraction): Pr
 /** [🎲 Tie Break] button — randomly picks a winner among tied restaurants (Issue #3). */
 export async function handleTieBreakButton(interaction: ButtonInteraction): Promise<void> {
   const [, , sessionId] = interaction.customId.split(':');
-  const session = await getActiveSessionForGuild(interaction.guildId!);
-  if (!session || session.id !== sessionId) {
-    await interaction.reply({ content: '⚠️ Session not active.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  const session = await requireActiveSession(interaction, sessionId);
+  if (!session) return;
 
   if (!isCreatorOrAdmin(interaction.user.id, getMember(interaction), session)) {
     await interaction.reply({

@@ -88,6 +88,8 @@ export interface Restaurant {
   addedBy: string;
   votes: string[];
   createdAt: string;
+  /** Cosmos optimistic-concurrency token (used for IfMatch vote writes). */
+  _etag?: string;
 }
 
 /** Driver's carpool record within a session. */
@@ -120,16 +122,6 @@ export interface RestaurantOption {
   name: string;
   isActive: boolean;
   createdAt: string;
-}
-
-/** Frequently-used restaurant name persisted per guild (BR-024). */
-export interface Favorite {
-  /** Composite: `${guildId}::${name_normalized}` */
-  id: string;
-  guildId: string;
-  name: string;
-  usageCount: number;
-  lastUsedAt: string;
 }
 
 /** A guild member excluded from the 🔔 Ping Unanswered reminder (Issue #5). */

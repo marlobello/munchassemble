@@ -3,7 +3,7 @@ import { getDatabase, CONTAINERS } from '../cosmosClient.js';
 import type { LunchSession, SessionStatus } from '../../types/index.js';
 
 /** Returns today's date as YYYY-MM-DD in the process local timezone (set via TZ env var). */
-function getLocalToday(): string {
+export function getLocalToday(): string {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
@@ -48,7 +48,13 @@ export async function getActiveSessionForGuild(guildId: string): Promise<LunchSe
     ],
   };
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
-  return resources[0] ?? null;
+  // Deterministic selection: prefer a still-planning session over a finalized (locked)
+  // one, then newest first. Guards against ambiguity if both ever coexist transiently.
+  const sorted = resources.sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'planning' ? -1 : 1;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  return sorted[0] ?? null;
 }
 
 export async function updateSession(

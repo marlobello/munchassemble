@@ -7,12 +7,10 @@ import {
   castVote,
   removeVoteFromAll,
 } from '../db/repositories/restaurantRepo.js';
-import { recordUsage } from '../db/repositories/favoriteRepo.js';
 import { DuplicateError } from '../utils/errors.js';
 
 export async function addRestaurant(
   sessionId: string,
-  guildId: string,
   name: string,
   addedBy: string,
 ): Promise<Restaurant> {
@@ -34,9 +32,7 @@ export async function addRestaurant(
     votes: [],
     createdAt: now,
   };
-  const created = await createRestaurant(restaurant);
-  await recordUsage(guildId, name);
-  return created;
+  return createRestaurant(restaurant);
 }
 
 export async function voteForRestaurant(

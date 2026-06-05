@@ -1,6 +1,7 @@
 import type { LunchSession, Participant, Restaurant, Carpool } from '../types/index.js';
-import { AttendanceStatus, TransportStatus } from '../types/index.js';
+import { AttendanceStatus } from '../types/index.js';
 import { format12h } from '../ui/panelBuilder.js';
+import { categorizeTransport } from './transport.js';
 
 /**
  * Build a notification summary suitable for channel messages (Finalize, T-15, T-5).
@@ -27,15 +28,7 @@ export function buildNotificationSummary(
   ];
 
   // Transportation details
-  const soloDrivers = participants.filter((p) => p.transportStatus === TransportStatus.DrivingAlone);
-  const unassignedRiders = participants.filter(
-    (p) => p.transportStatus === TransportStatus.NeedRide && !p.assignedDriverId,
-  );
-  const undeclared = participants.filter(
-    (p) =>
-      (p.attendanceStatus === AttendanceStatus.In || p.attendanceStatus === AttendanceStatus.Maybe) &&
-      p.transportStatus === TransportStatus.None,
-  );
+  const { soloDrivers, unassignedRiders, undeclared } = categorizeTransport(participants);
 
   if (carpools.length > 0 || soloDrivers.length > 0 || unassignedRiders.length > 0 || undeclared.length > 0) {
     lines.push('', '🚗 **Transportation**');
@@ -66,4 +59,27 @@ export function buildNotificationSummary(
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Builds the public channel notice for a cancelled session, shared by the
+ * slash `cancel` command and the panel ❌ Cancel button so both behave identically.
+ * Returns the message content plus the userIds to @mention (In/Maybe attendees).
+ */
+export function buildCancelNotice(
+  session: LunchSession,
+  participants: Participant[],
+  cancellerId: string,
+): { content: string; mentionIds: string[] } {
+  const inOrMaybe = participants.filter(
+    (p) => p.attendanceStatus === AttendanceStatus.In || p.attendanceStatus === AttendanceStatus.Maybe,
+  );
+  const mentionIds = inOrMaybe.map((p) => p.userId);
+  const lines: string[] = [
+    `❌ **Munch session for ${session.date} has been cancelled** by <@${cancellerId}>.`,
+  ];
+  if (mentionIds.length > 0) {
+    lines.push(`📢 Heads up: ${mentionIds.map((id) => `<@${id}>`).join(' ')}`);
+  }
+  return { content: lines.join('\n'), mentionIds };
 }

@@ -15,7 +15,7 @@
 
 ### In-scope
 
-- **Phase 1 (MVP):** Session creation, attendance tracking, restaurant voting with persistent favorites, live summary panel, session lock/finalize, ping unanswered users.
+- **Phase 1 (MVP):** Session creation, attendance tracking, restaurant voting, live summary panel, session lock/finalize, ping unanswered users.
 - **Phase 2:** Carpool coordination (driver/rider), muster point selection and admin configuration.
 - **Phase 3:** Smart automated reminders (T-15, T-5), auto-assign rides algorithm.
 - Admin controls (session creator + Discord server admin/mod roles can lock decisions, edit times, configure muster points).

@@ -1,5 +1,6 @@
 import { SecretClient } from '@azure/keyvault-secrets';
 import { DefaultAzureCredential } from '@azure/identity';
+import { logger } from './utils/logger.js';
 
 interface Config {
   discordBotToken: string;
@@ -30,7 +31,7 @@ export async function initConfig(): Promise<void> {
   let botToken: string | undefined = process.env.DISCORD_BOT_TOKEN;
 
   if (vaultName) {
-    console.log(`[config] Loading secrets from Key Vault: ${vaultName}`);
+    logger.info(`[config] Loading secrets from Key Vault: ${vaultName}`);
     const url = `https://${vaultName}.vault.azure.net`;
     const client = new SecretClient(url, new DefaultAzureCredential());
 

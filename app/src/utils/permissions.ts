@@ -1,5 +1,5 @@
-import type { GuildMember, Interaction } from 'discord.js';
-import { PermissionFlagsBits } from 'discord.js';
+import { GuildMember, PermissionFlagsBits } from 'discord.js';
+import type { Interaction } from 'discord.js';
 import type { LunchSession } from '../types/index.js';
 
 /** Returns true if the member holds a guild role named "mod" (case-insensitive). */
@@ -32,8 +32,10 @@ export function isAdmin(member: GuildMember | null): boolean {
   );
 }
 
-/** Helper to get GuildMember from an interaction (guards against DMs). */
+/** Helper to get a full GuildMember from an interaction (guards against DMs and raw API members). */
 export function getMember(interaction: Interaction): GuildMember | null {
   if (!interaction.inGuild()) return null;
-  return interaction.member as GuildMember;
+  // interaction.member may be a raw APIInteractionGuildMember (no .permissions helper);
+  // only a cached GuildMember exposes the methods isAdmin() relies on.
+  return interaction.member instanceof GuildMember ? interaction.member : null;
 }

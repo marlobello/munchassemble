@@ -8,6 +8,7 @@ import {
   expireOldSessions,
   getCompletedSessionsForGuild,
   getSessionById,
+  getLocalToday,
 } from '../db/repositories/sessionRepo.js';
 
 export interface CreateSessionInput {
@@ -18,19 +19,26 @@ export interface CreateSessionInput {
   lunchTime: string;
   departTime: string;
   notes?: string;
-  initialRestaurant?: string;
 }
 
-/** Creates a new session. Throws if one is already active for the guild (BR-001). */
+/**
+ * Creates a new session. Throws if a still-planning session is active for the
+ * guild (BR-001). A previously **finalized** (locked) session does not block a
+ * new one — it is auto-completed here to free the slot.
+ */
 export async function startSession(
   input: CreateSessionInput,
   messageId = '',
 ): Promise<LunchSession> {
   const existing = await getActiveSessionForGuild(input.guildId);
   if (existing) {
-    throw new Error(
-      `A session is already active for this server (started on ${existing.date}). Finalize or cancel it first.`,
-    );
+    if (existing.status === SessionStatus.Planning) {
+      throw new Error(
+        `A session is already active for this server (started on ${existing.date}). Finalize or cancel it first.`,
+      );
+    }
+    // existing.status === Locked (finalized) — retire it so the new one is unambiguous
+    await completeSession(existing);
   }
 
   const now = new Date().toISOString();
@@ -82,4 +90,4 @@ export async function updateSessionTimes(
   return updateSession({ ...session, lunchTime, departTime });
 }
 
-export { getActiveSessionForGuild, expireOldSessions, getCompletedSessionsForGuild, getSessionById };
+export { getActiveSessionForGuild, expireOldSessions, getCompletedSessionsForGuild, getSessionById, getLocalToday };

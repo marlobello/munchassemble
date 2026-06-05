@@ -14,8 +14,12 @@ export async function getCarpoolByDriver(sessionId: string, driverId: string): P
   try {
     const { resource } = await container().item(id, sessionId).read<Carpool>();
     return resource ?? null;
-  } catch {
-    return null;
+  } catch (err) {
+    // Only swallow "not found" (404); rethrow anything else (auth, quota, network)
+    if (err instanceof Error && 'code' in err && (err as { code: number }).code === 404) {
+      return null;
+    }
+    throw err;
   }
 }
 
