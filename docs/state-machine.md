@@ -115,3 +115,14 @@ No cascade. User starts fresh and may re-vote / re-select transport as desired.
 | Out user clicks Vote | ❌ You're marked as **Out** and cannot vote on a restaurant. |
 | Out user clicks any transport | ❌ You're marked as **Out** — set your attendance to **In** or **Maybe** first. |
 | Maybe user clicks Can Drive | ❌ You need to confirm you're **In** before hosting a carpool. |
+| Driver sets seats below current rider count | ❌ You have **N** rider(s) but only set **M** seat(s). Ask a rider to switch out, or choose at least **N** seat(s). |
+
+---
+
+## Carpool Capacity Invariant
+
+A carpool's `seats` must always be **≥** `riders.length`. When a driver re-registers
+(re-clicks 🚗 Can Drive) with fewer seats than they currently have riders, the change is
+**rejected** rather than silently overbooking the car — riders are never auto-bumped.
+The driver must first have a rider switch out, or pick a higher seat count.
+Enforced in `registerDriver` (`app/src/services/carpoolService.ts`).

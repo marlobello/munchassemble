@@ -18,6 +18,7 @@ import {
   assignRiderToDriver,
   registerDriver,
   requestRide,
+  clearCarpoolRole,
 } from '../../../src/services/carpoolService';
 import * as participantRepo from '../../../src/db/repositories/participantRepo';
 import * as carpoolRepo from '../../../src/db/repositories/carpoolRepo';
@@ -231,6 +232,38 @@ describe('registerDriver', () => {
 
     expect(carpoolRepo.deleteCarpool).toHaveBeenCalledWith('sess', 'new-user');
   });
+
+  it('rejects a seat reduction below the current rider count (no overbooking)', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
+      makeParticipant({ userId: 'driver-1', attendanceStatus: AttendanceStatus.In }),
+    );
+    (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(
+      makeCarpool({ driverId: 'driver-1', seats: 3, riders: ['r1', 'r2', 'r3'] }),
+    );
+
+    await expect(
+      registerDriver('sess', 'driver-1', 1, 'Garage A', 'u', 'U'),
+    ).rejects.toThrow(/3.*rider|rider.*3/i);
+
+    // Rejection must have no side effects — carpool untouched.
+    expect(carpoolRepo.upsertCarpool).not.toHaveBeenCalled();
+    expect(participantRepo.upsertParticipant).not.toHaveBeenCalled();
+  });
+
+  it('allows re-registering with seats equal to the current rider count', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
+      makeParticipant({ userId: 'driver-1', attendanceStatus: AttendanceStatus.In }),
+    );
+    (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(
+      makeCarpool({ driverId: 'driver-1', seats: 3, riders: ['r1', 'r2'] }),
+    );
+
+    const result = await registerDriver('sess', 'driver-1', 2, 'Garage A', 'u', 'U');
+
+    expect(result.seats).toBe(2);
+    expect(result.riders).toEqual(['r1', 'r2']);
+    expect(carpoolRepo.upsertCarpool).toHaveBeenCalled();
+  });
 });
 
 // ── requestRide ───────────────────────────────────────────────────────────────
@@ -258,5 +291,76 @@ describe('requestRide', () => {
         attendanceStatus: AttendanceStatus.Maybe, // stays Maybe
       }),
     );
+  });
+});
+
+// ── clearCarpoolRole ──────────────────────────────────────────────────────────
+
+describe('clearCarpoolRole', () => {
+  it('removes a rider from their assigned driver\'s carpool (issue #10)', async () => {
+    const carpool = makeCarpool({ driverId: 'driver-1', seats: 3, riders: ['rider-1', 'other'] });
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
+      makeParticipant({
+        userId: 'rider-1',
+        attendanceStatus: AttendanceStatus.In,
+        transportStatus: TransportStatus.NeedRide,
+        assignedDriverId: 'driver-1',
+      }),
+    );
+    (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(carpool);
+
+    await clearCarpoolRole('sess', 'rider-1');
+
+    // Seat freed: rider-1 removed from the driver's carpool, others preserved.
+    expect(carpoolRepo.upsertCarpool).toHaveBeenCalledWith(
+      expect.objectContaining({ driverId: 'driver-1', riders: ['other'] }),
+    );
+    // Participant's transport + assignment cleared.
+    expect(participantRepo.upsertParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transportStatus: TransportStatus.None,
+        assignedDriverId: undefined,
+      }),
+    );
+  });
+
+  it('unregisters a driver (cascades to their riders) when clearing a CanDrive role', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
+      makeParticipant({ userId: 'driver-1', transportStatus: TransportStatus.CanDrive }),
+    );
+    // unregisterDriver path: driver has an empty carpool, then clears own transport.
+    (carpoolRepo.getCarpoolByDriver as jest.Mock).mockResolvedValue(
+      makeCarpool({ driverId: 'driver-1', riders: [] }),
+    );
+
+    await clearCarpoolRole('sess', 'driver-1');
+
+    expect(carpoolRepo.deleteCarpool).toHaveBeenCalledWith('sess', 'driver-1');
+  });
+
+  it('does not touch any carpool when the user had no assigned driver', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(
+      makeParticipant({
+        userId: 'user-a',
+        transportStatus: TransportStatus.NeedRide,
+        assignedDriverId: undefined,
+      }),
+    );
+
+    await clearCarpoolRole('sess', 'user-a');
+
+    expect(carpoolRepo.upsertCarpool).not.toHaveBeenCalled();
+    expect(participantRepo.upsertParticipant).toHaveBeenCalledWith(
+      expect.objectContaining({ transportStatus: TransportStatus.None, assignedDriverId: undefined }),
+    );
+  });
+
+  it('no-ops when the participant does not exist', async () => {
+    (participantRepo.getParticipant as jest.Mock).mockResolvedValue(null);
+
+    await clearCarpoolRole('sess', 'ghost');
+
+    expect(participantRepo.upsertParticipant).not.toHaveBeenCalled();
+    expect(carpoolRepo.upsertCarpool).not.toHaveBeenCalled();
   });
 });

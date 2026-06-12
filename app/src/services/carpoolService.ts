@@ -38,6 +38,17 @@ export async function registerDriver(
     throw new Error("You need to be **In** to host a carpool.");
   }
 
+  // Reject a seat reduction below the current rider count: silently keeping more
+  // riders than seats would overbook the car and strand riders who believe they
+  // have a seat. Validate before any mutation so a rejection has no side effects.
+  const existing = await getCarpoolByDriver(sessionId, driverId);
+  if (existing && seats < existing.riders.length) {
+    throw new Error(
+      `You have **${existing.riders.length}** rider(s) but only set **${seats}** seat(s). ` +
+        `Ask a rider to switch out, or choose at least **${existing.riders.length}** seat(s).`,
+    );
+  }
+
   // If user was previously a rider in someone else's carpool, remove them from it.
   // Remember the driver so we can restore the seat if the participant write fails.
   let removedFromDriverId: string | null = null;
@@ -51,7 +62,6 @@ export async function registerDriver(
     }
   }
 
-  const existing = await getCarpoolByDriver(sessionId, driverId);
   const carpool: Carpool = {
     id: `${sessionId}::${driverId}`,
     sessionId,
@@ -201,6 +211,16 @@ export async function clearCarpoolRole(sessionId: string, userId: string): Promi
   if (p.transportStatus === TransportStatus.CanDrive) {
     await unregisterDriver(sessionId, userId);
   } else {
+    // If the user was a rider assigned to a driver, free up their seat so the
+    // driver's carpool no longer shows it taken (issue #10).
+    if (p.assignedDriverId) {
+      const carpool = await getCarpoolByDriver(sessionId, p.assignedDriverId);
+      if (carpool && carpool.riders.includes(userId)) {
+        carpool.riders = carpool.riders.filter((id) => id !== userId);
+        carpool.updatedAt = new Date().toISOString();
+        await upsertCarpool(carpool);
+      }
+    }
     await upsertParticipant({
       ...p,
       transportStatus: TransportStatus.None,
