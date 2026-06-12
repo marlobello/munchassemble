@@ -10,11 +10,24 @@ import { buildPanel } from '../ui/panelBuilder.js';
 import { logger } from './logger.js';
 
 /**
+ * Cooldown between full member re-fetches per guild, to respect the gateway
+ * REQUEST_GUILD_MEMBERS (opcode 8) rate limit when the cache is empty.
+ */
+const MEMBER_REFETCH_COOLDOWN_MS = 60_000;
+
+/** Last time we attempted a full member fetch for a guild (keyed by guildId). */
+const lastMemberFetchAttempt = new Map<string, number>();
+
+/**
  * Returns display names of guild members who have not responded to the session.
  * Excludes bots, users on the noping list, and anyone already in the participants list.
  *
- * Uses the local guild member cache (pre-populated at startup in index.ts)
- * instead of guild.members.fetch() to avoid gateway REQUEST_GUILD_MEMBERS rate limits.
+ * Prefers the local guild member cache (pre-populated at startup in index.ts) to
+ * avoid gateway REQUEST_GUILD_MEMBERS rate limits. The startup fetch only runs once
+ * on ClientReady and is NOT repeated after a gateway resume/reconnect, so the cache
+ * can silently empty out on a long-lived process. When that happens we lazily
+ * re-fetch the roster (at most once per MEMBER_REFETCH_COOLDOWN_MS per guild) so the
+ * "No Response" list doesn't blank out for everyone.
  */
 export async function fetchNoResponseNames(
   guildId: string,
@@ -27,12 +40,25 @@ export async function fetchNoResponseNames(
     return [];
   }
 
-  // Use the local cache instead of fetch() — avoids gateway opcode 8 rate limits.
-  // The GuildMembers intent ensures the cache is populated on connect for small guilds.
-  const members = guild.members.cache;
+  let members = guild.members.cache;
   if (members.size === 0) {
-    logger.warn('[panelRefresh] Guild member cache is empty; skipping No Response names');
-    return [];
+    const now = Date.now();
+    const last = lastMemberFetchAttempt.get(guildId) ?? 0;
+    if (now - last >= MEMBER_REFETCH_COOLDOWN_MS) {
+      lastMemberFetchAttempt.set(guildId, now);
+      logger.warn('[panelRefresh] Guild member cache empty; re-fetching roster for guild', guildId);
+      try {
+        await guild.members.fetch();
+        members = guild.members.cache;
+        logger.info(`[panelRefresh] Re-fetched ${members.size} members for guild ${guildId}`);
+      } catch (err) {
+        logger.error('[panelRefresh] guild.members.fetch() failed:', err);
+      }
+    }
+    if (members.size === 0) {
+      logger.warn('[panelRefresh] Guild member cache still empty; skipping No Response names');
+      return [];
+    }
   }
 
   const noPingList = await getNoPingListForGuild(guildId);

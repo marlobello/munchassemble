@@ -113,3 +113,26 @@ After inviting the bot and deploying, configure the guild's pick lists:
 /munchassemble-config restaurant add Panda Express
 ```
 
+---
+
+## Empty "No Response" List on the Panel
+
+**Symptom:** The `❓ No Response` line on the panel is blank even though guild members
+have not RSVPed (e.g. a member named "Andy" never shows up).
+
+**Cause:** The guild member roster is cached once at startup (`ClientReady`). After a
+gateway resume/reconnect `ClientReady` does not re-fire, so the cache can silently
+empty out on a long-lived process. `fetchNoResponseNames` then has no members to list.
+
+**Mitigation (in code):** `fetchNoResponseNames` now lazily re-fetches the roster when
+the cache is empty, throttled to once per 60s per guild. Confirm via logs:
+
+```bash
+az containerapp logs show -n ca-munchassemble-prod -g rg-munchassemble-prod \
+  --tail 100 --type console | grep -i "member cache\|Re-fetched"
+```
+
+**If it persists:** restart the revision to force a full roster fetch, and verify the
+**Server Members Intent** is enabled in the Discord Developer Portal (Bot → Privileged
+Gateway Intents).
+
