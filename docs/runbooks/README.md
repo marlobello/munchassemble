@@ -10,13 +10,15 @@ Deployment is fully automated via GitHub Actions on push to `main`.
 
 | Changed path | Triggered workflow | What happens |
 |---|---|---|
-| `app/**` | `deploy-app.yml` | Build Docker image → push to ACR → update Container App revision |
+| `app/**` | `deploy-app.yml` | Build Docker image → push to GHCR → update **bot** Container App revision |
+| `app/**` | `deploy-web.yml` | Build `Dockerfile.web` image → push to GHCR → update **analytics web** Container App revision |
 | `infra/**` | `deploy-infra.yml` | `az deployment group create` with Bicep |
 | Both | Both workflows run concurrently |
 
 **To trigger manually** (e.g. re-run failed deploy):
 ```bash
 gh workflow run deploy-app.yml --ref main
+gh workflow run deploy-web.yml --ref main
 gh workflow run deploy-infra.yml --ref main
 ```
 
@@ -135,4 +137,82 @@ az containerapp logs show -n ca-munchassemble-prod -g rg-munchassemble-prod \
 **If it persists:** restart the revision to force a full roster fetch, and verify the
 **Server Members Intent** is enabled in the Discord Developer Portal (Bot → Privileged
 Gateway Intents).
+
+---
+
+## Analytics Web App (Phase 4, ADR-0006)
+
+The read-only analytics web app (`ca-munchassemble-web-prod`) runs scale-to-zero in the
+shared Container Apps Environment and is gated by Discord OAuth (BR-070).
+
+### One-time Discord OAuth setup
+
+1. Discord Developer Portal → your application → **OAuth2**.
+2. Under **Redirects**, add: `https://munchassemble.dotheneedful.dev/auth/callback`
+   (the custom domain; if no custom domain is configured use the default FQDN from the
+   Bicep output `webAppUrl`).
+3. Copy the **Client ID** → set the `discordOAuthClientId` Bicep param (it is public, not a secret).
+4. Reset/copy the **Client Secret** and store it in Key Vault:
+   ```bash
+   az keyvault secret set --vault-name kv-munchassmbl-prod \
+     --name discord-oauth-client-secret --value <oauth-client-secret>
+   ```
+5. Create the session-cookie signing secret (any long random string):
+   ```bash
+   az keyvault secret set --vault-name kv-munchassmbl-prod \
+     --name web-session-secret --value "$(openssl rand -hex 32)"
+   ```
+6. Restart the web revision to pick up Key Vault changes:
+   ```bash
+   az containerapp revision restart -n ca-munchassemble-web-prod -g rg-munchassemble-prod \
+     --revision <revision-name>
+   ```
+
+> The web app's managed identity holds only the **read-only** Cosmos data role and the
+> **Key Vault Secrets User** role — it can read the OAuth/session secrets and query data
+> but cannot mutate coordination data (NFR §1, BR-076).
+
+### Custom domain (munchassemble.dotheneedful.dev)
+
+The web app binds a custom domain with a **free Azure-managed TLS certificate**
+(`webCustomDomain` param). Azure validates domain control via DNS, so the two records
+below must exist **before** the infra deploy (the managed cert won't issue otherwise).
+
+Create these in Cloudflare DNS (set both to **DNS only / grey cloud** during issuance —
+Cloudflare's proxy interferes with managed-cert validation):
+
+| Type | Name | Value |
+|---|---|---|
+| CNAME | `munchassemble` | `ca-munchassemble-web-prod.happyriver-2952c918.centralus.azurecontainerapps.io` |
+| TXT | `asuid.munchassemble` | `<web app customDomainVerificationId>` |
+
+The verification token is subscription-wide; read it from any Container App:
+```bash
+az containerapp show -n ca-munchassemble-prod -g rg-munchassemble-prod \
+  --query properties.customDomainVerificationId -o tsv
+```
+
+Then deploy infra — the managed certificate is issued and the domain bound in one pass:
+```bash
+gh workflow run deploy-infra.yml --ref main
+```
+
+Verify binding + cert state:
+```bash
+az containerapp show -n ca-munchassemble-web-prod -g rg-munchassemble-prod \
+  --query "properties.configuration.ingress.customDomains" -o json
+```
+
+> Optional: after the cert is issued and bound, you may re-enable the Cloudflare proxy
+> (orange cloud) with SSL mode **Full (strict)** — the Azure managed cert is publicly
+> trusted, so strict origin validation succeeds.
+
+### Access denied for a legitimate user
+
+The user must be a member of one of the guilds in `DISCORD_GUILD_ID`. Confirm membership
+in Discord; the app calls `/users/@me/guilds` and checks for an overlap.
+
+### Deploy / rollback
+
+Same as the bot, but target `ca-munchassemble-web-prod` (see Deploy / Rollback above).
 

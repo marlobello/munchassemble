@@ -147,13 +147,23 @@ Manage users who are permanently excluded from the **🔔 Ping Unanswered** remi
 
 **Primary region:** Central US · **Fallback region:** East US 2
 
-**Cosmos DB containers:** `sessions`, `participants`, `restaurants`, `carpools`, `musterpoints`, `restaurantoptions`
+**Cosmos DB containers:** `sessions`, `participants`, `restaurants`, `carpools`, `musterpoints`, `restaurantoptions`, `noping`
+
+### Analytics Web App (Phase 4)
+
+A separate, **read-only** analytics web app (ADR-0006) runs in the same Container Apps
+Environment and surfaces historical insights over the Cosmos data — restaurant
+popularity & win rate, attendance trends, driver/carpool stats, muster usage, and a
+session history. It is **private**: access is gated by **Discord OAuth** to members of
+the configured guild(s). It scales to zero when idle to stay within budget, and uses a
+managed identity with the Cosmos **read-only** data role (it cannot mutate coordination
+data). Source: `app/src/web/`; start locally with `npm run dev:web`.
 
 ---
 
 ## Docs
 
-- [`docs/brd.md`](docs/brd.md) — Business requirements (BR-001 → BR-063)
+- [`docs/brd.md`](docs/brd.md) — Business requirements (BR-001 → BR-076)
 - [`docs/nfr.md`](docs/nfr.md) — Non-functional requirements
 - [`docs/adr/`](docs/adr/) — Architecture decision records
 - [`docs/runbooks/`](docs/runbooks/) — Operational procedures
@@ -183,6 +193,8 @@ Manage users who are permanently excluded from the **🔔 Ping Unanswered** remi
 | `discord-bot-token` | Discord bot token from Developer Portal |
 | `discord-application-id` | Discord application ID |
 | `cosmos-endpoint` | Cosmos DB account endpoint URL |
+| `discord-oauth-client-secret` | OAuth2 client secret for the analytics web app (Phase 4) |
+| `web-session-secret` | HMAC secret for signing the web app's session cookies (Phase 4) |
 
 For local dev, copy `app/.env.example` to `app/.env` and fill in the values.
 
@@ -244,7 +256,8 @@ GitHub Actions workflows (requires Azure OIDC federated credentials):
 |---|---|---|
 | `ci.yml` | PRs + pushes to `main` | Build, test, Bicep lint |
 | `deploy-infra.yml` | Infra file changes on `main` | Bicep what-if (PR) / deploy (push) |
-| `deploy-app.yml` | App file changes on `main` | Build image → push ACR → update Container App |
+| `deploy-app.yml` | App file changes on `main` | Build bot image → push GHCR → update bot Container App |
+| `deploy-web.yml` | App file changes on `main` | Build analytics web image → push GHCR → update web Container App |
 
 **Required GitHub secrets:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 

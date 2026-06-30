@@ -6,7 +6,9 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
+    "start:web": "node dist/web/index.js",
     "dev": "tsx watch src/index.ts",
+    "dev:web": "tsx watch src/web/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint src tests --ext .ts"

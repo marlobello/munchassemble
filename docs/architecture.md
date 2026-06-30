@@ -67,13 +67,32 @@ sequenceDiagram
 
 | Component | SKU / Config | Purpose |
 |---|---|---|
-| Container App | Consumption, minReplicas=1, always-on | Hosts the bot process |
-| Container Apps Env | Consumption | Networking envelope |
+| Container App (bot) | Consumption, minReplicas=1, always-on | Hosts the bot process |
+| Container App (web) | Consumption, minReplicas=0, scale-to-zero | Read-only analytics web app (ADR-0006), Discord-OAuth gated |
+| Container Apps Env | Consumption | Networking envelope (shared by bot + web) |
 | Cosmos DB | Serverless, 3 containers | Persistent session/participant/restaurant/carpool data |
-| Key Vault | Standard | Stores `discord-bot-token` secret |
+| Key Vault | Standard | Stores `discord-bot-token`, `discord-oauth-client-secret`, `web-session-secret` |
 | App Insights | Pay-as-you-go | Traces, logs, live metrics |
 | Log Analytics Workspace | Pay-as-you-go | Backend for App Insights |
 | Container Registry | **None** — uses ghcr.io (public) | Image hosting |
+
+## Analytics Web App (ADR-0006)
+
+A second Container App (`ca-munchassemble-web`) joins the same Container Apps Environment
+and serves a **read-only** analytics UI. It has external HTTPS ingress, scales to zero
+when idle, authenticates users via **Discord OAuth2** (guild-membership gated, BR-070),
+and reads Cosmos with a **separate managed identity holding only the read-only data
+role** (BR-076). It reads the OAuth client secret and session-signing secret from Key
+Vault via Managed Identity.
+
+```mermaid
+graph LR
+    USER[Guild member browser] -->|HTTPS| WEB[Container App: web\nManaged Identity\nminReplicas:0]
+    WEB -->|Discord OAuth2| DISCORD[Discord OAuth]
+    WEB -->|Cosmos read-only data role| COSMOS[Cosmos DB]
+    WEB -->|Key Vault Secrets User| KV[Key Vault]
+    WEB -->|traces + logs| AI[App Insights]
+```
 
 ## Security Model
 

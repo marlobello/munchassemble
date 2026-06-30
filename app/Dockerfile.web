@@ -1,0 +1,35 @@
+# Dockerfile.web — read-only analytics web app (ADR-0006, BRD Phase 4).
+# Same build as the bot image but starts the web entrypoint (dist/web/index.js).
+
+# ── Stage 1: build ─────────────────────────────────────────────────────────────
+FROM node:lts-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src/ ./src/
+
+RUN npm run build
+
+# ── Stage 2: runtime ───────────────────────────────────────────────────────────
+FROM node:lts-alpine AS runtime
+
+WORKDIR /app
+
+# Install only production dependencies
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+
+# Copy compiled output
+COPY --from=builder /app/dist ./dist
+
+# Run as non-root user (security best practice)
+RUN addgroup -S webuser && adduser -S webuser -G webuser
+USER webuser
+
+EXPOSE 8080
+
+CMD ["node", "dist/web/index.js"]

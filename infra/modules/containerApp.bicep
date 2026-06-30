@@ -115,3 +115,9 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
 
 @description('Principal ID of the Container App system-assigned managed identity')
 output principalId string = containerApp.identity.principalId
+
+@description('Resource ID of the shared Container Apps Environment')
+output environmentId string = containerAppsEnv.id
+
+@description('Default domain of the shared Container Apps Environment (used to derive the web app FQDN)')
+output environmentDefaultDomain string = containerAppsEnv.properties.defaultDomain

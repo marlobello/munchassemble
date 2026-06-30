@@ -69,8 +69,9 @@ module sessionContainer 'cosmosContainer.bicep' = {
     databaseName: database.name
     containerName: 'sessions'
     partitionKey: '/guildId'
-    // TTL enabled; completed sessions set _ttl = 2592000 (30 days) on the document.
-    defaultTtl: -1
+    // Sessions are retained indefinitely (no TTL) — the analytics web app (ADR-0006)
+    // reads historical sessions. Earlier "30-day TTL on completed" behavior was never
+    // implemented in code; TTL is left disabled (defaultTtl defaults to 0).
   }
 }
 

@@ -80,6 +80,20 @@ export async function getCompletedSessionsForGuild(
   const { resources } = await container().items.query<LunchSession>(query).fetchAll();
   return resources;
 }
+
+/**
+ * Returns ALL sessions for a guild, newest first. Used by the read-only analytics web
+ * app (ADR-0006, BR-071) to build historical insights. Unlike getCompletedSessionsForGuild
+ * this is unbounded and includes every status.
+ */
+export async function getAllSessionsForGuild(guildId: string): Promise<LunchSession[]> {
+  const query: SqlQuerySpec = {
+    query: `SELECT * FROM c WHERE c.guildId = @guildId ORDER BY c.createdAt DESC`,
+    parameters: [{ name: '@guildId', value: guildId }],
+  };
+  const { resources } = await container().items.query<LunchSession>(query).fetchAll();
+  return resources;
+}
 /**
  * Mark stale planning/locked sessions as completed (BR-005).
  * A session is stale if its date has already passed in local time.

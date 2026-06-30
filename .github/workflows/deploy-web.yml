@@ -1,0 +1,124 @@
+name: Deploy Web
+
+# Builds and deploys the read-only analytics web app (ADR-0006, BRD Phase 4).
+# Shares the app/ codebase with the bot but uses Dockerfile.web and a separate image,
+# so the singleton bot and the scalable web app deploy independently.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write   # Push to GitHub Container Registry
+  id-token: write   # Azure OIDC login in deploy job
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/munchassemble-web
+
+jobs:
+  build-and-push:
+    name: Build & Push Web Image
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: sha-${{ steps.sha.outputs.short }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install, build & test
+        working-directory: app
+        run: npm ci && npm run build && npm test
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=false
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./app
+          file: ./app/Dockerfile.web
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  deploy:
+    name: Deploy to Web Container App
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: prod
+
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Update Web Container App image
+        run: |
+          az containerapp update \
+            --name ca-munchassemble-web-prod \
+            --resource-group rg-munchassemble-prod \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}
+
+      - name: Wait for revision to become healthy
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Waiting for revision with image ${IMAGE} to become active..."
+          for i in $(seq 1 20); do
+            STATUS=$(az containerapp revision list \
+              --name ca-munchassemble-web-prod \
+              --resource-group rg-munchassemble-prod \
+              --query "[?properties.template.containers[0].image=='${IMAGE}'].properties.healthState" \
+              -o tsv 2>/dev/null)
+            echo "Attempt $i: healthState=${STATUS}"
+            if [ "$STATUS" = "Healthy" ]; then
+              echo "Revision is healthy."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "ERROR: Revision did not become healthy within 5 minutes."
+          az containerapp revision list \
+            --name ca-munchassemble-web-prod \
+            --resource-group rg-munchassemble-prod \
+            --query "[].{name:name, active:properties.active, health:properties.healthState, image:properties.template.containers[0].image}" \
+            -o table
+          exit 1

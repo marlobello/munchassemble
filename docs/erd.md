@@ -72,11 +72,22 @@ erDiagram
 
 | Cosmos Container | Partition Key | Notes |
 |---|---|---|
-| `sessions` | `/guildId` | One active session per guild at a time |
+| `sessions` | `/guildId` | One active session per guild at a time. **Retained indefinitely** (see Retention below). |
 | `participants` | `/sessionId` | All RSVPs + transport for a session |
 | `restaurants` | `/sessionId` | Voting options + vote tallies |
 | `carpools` | `/sessionId` | One document per driver |
+| `restaurantoptions` | `/guildId` | Guild-configurable restaurant pick-list (users pick from this only) |
 | `musterpoints` | `/guildId` | Guild-configurable pickup locations |
+| `noping` | `/guildId` | Guild members excluded from the 🔔 Ping Unanswered reminder |
+| `favorites` | `/guildId` | Present in production; **not yet covered by current source / a BRD requirement** — treat as experimental until a feature owns it. |
+
+## Retention
+
+All containers retain data **indefinitely**. Although `LunchSession` carries an optional
+`_ttl` field and an earlier design note described completed sessions expiring after 30
+days, **no code path sets `_ttl`** and the misleading container `defaultTtl` config has
+been removed — so completed sessions persist. This durable history is what the Phase 4
+analytics web app (ADR-0006, BRD §3 BR-071–075) reads.
 
 ## Key invariants
 

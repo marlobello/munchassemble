@@ -18,12 +18,14 @@
 - **Phase 1 (MVP):** Session creation, attendance tracking, restaurant voting, live summary panel, session lock/finalize, ping unanswered users.
 - **Phase 2:** Carpool coordination (driver/rider), muster point selection and admin configuration.
 - **Phase 3:** Smart automated reminders (T-15, T-5), auto-assign rides algorithm.
+- **Phase 4:** Read-only **analytics web app** (historical insights over the Cosmos data — restaurant popularity, attendance trends, driver stats, session history). Private, Discord-OAuth gated to guild members. See ADR-0006.
 - Admin controls (session creator + Discord server admin/mod roles can lock decisions, edit times, configure muster points).
 - Mobile-first Discord UX (embeds, buttons, select menus, modals — all supported on Discord mobile).
 
 ### Out-of-scope
 
-- Web frontend or map view.
+- Map view of restaurants / muster points.
+- A web frontend for *coordinating* lunches (RSVP, voting, carpool); all coordination remains in Discord. The Phase 4 web app is **read-only analytics** only.
 - Multi-server deployment (single server only).
 - Analytics / AI restaurant suggestions (future enhancement).
 - Weather integration.
@@ -102,6 +104,28 @@ Decided 2026-03-30. Implemented in `src/utils/stateRules.ts`.
 - **BR-062 Reminder Cancellation:** If the session is finalized or completed before the reminder fires, the reminder is cancelled.
 - **BR-063 Scheduler:** Reminders are implemented via an in-process node-cron scheduler running in the Container App (always-on, minReplicas:1).
 
+### Analytics Web App (Phase 4)
+
+> The analytics web app is **read-only**. It never mutates coordination data and is a
+> separate Container App from the bot (ADR-0006). All write/coordination flows remain in
+> Discord.
+
+- **BR-070 Private Access:** The web app is gated by **Discord OAuth2**. Only
+  authenticated users who are members of the configured guild may view any analytics
+  page; non-members receive an access-denied response. Sessions use a signed, httpOnly
+  cookie.
+- **BR-071 Session History:** A history view lists past sessions (date, status, winning
+  restaurant, attendee count, lunch/departure times), newest first.
+- **BR-072 Restaurant Insights:** A leaderboard of restaurants across all sessions
+  showing total votes, times proposed, and **win rate** (how often locked as the choice).
+- **BR-073 Attendance Insights:** Attendance trends over time and per-user attendance
+  rate (In / Maybe / Out proportions).
+- **BR-074 Transport Insights:** Driver/carpool statistics — drivers ranked by rides
+  given, seats offered vs filled, solo drivers, and unassigned-rider incidence.
+- **BR-075 Muster Point Insights:** Distribution of muster point usage across sessions.
+- **BR-076 Read-Only Guarantee:** The web app's managed identity holds only the Cosmos
+  **read-only** data role; it has no capability to write coordination data (NFR §1).
+
 ## 4. Data Model
 
 ```
@@ -167,6 +191,7 @@ RestaurantOption   { guildId, name, isActive, createdAt }
 | Phase 1 (MVP) | Session creation, attendance, restaurant voting with configured list, summary panel, lock/finalize, ping unanswered | ✅ Released |
 | Phase 2 | Carpool coordination, muster point selection + admin config, restaurant list config, time editing | ✅ Released |
 | Phase 3 | Smart reminders (node-cron), auto-assign rides | ✅ Released |
+| Phase 4 | Read-only analytics web app (Discord-OAuth gated): session history, restaurant/attendance/transport/muster insights | 🚧 Planned |
 
 ## 9. Acceptance Criteria
 
@@ -178,3 +203,6 @@ RestaurantOption   { guildId, name, isActive, createdAt }
 - One active session per guild enforced; a second `/munchassemble` returns an ephemeral error.
 - All secrets sourced from Key Vault; none committed to source control (NFR §1).
 - Monthly Azure cost remains < $20 (NFR §4).
+- **BR-070:** (Phase 4) Unauthenticated users and non-guild-members cannot view any analytics page; only Discord-authenticated guild members can.
+- **BR-071–075:** (Phase 4) History and insight views render from durable Cosmos data; aggregates (restaurant win rate, attendance rate, driver rankings, muster usage) are computed across all retained sessions.
+- **BR-076:** (Phase 4) The web app uses a read-only Cosmos managed identity and cannot mutate coordination data.
