@@ -97,7 +97,9 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
             <td>${escapeHtml(h.date)}</td>
             <td>${escapeHtml(h.status)}</td>
             <td>${escapeHtml(h.lunchTime)}</td>
-            <td>${h.winningRestaurant ? escapeHtml(h.winningRestaurant) : '<span class="muted">—</span>'}</td>
+            <td>${h.winningRestaurant
+              ? `${escapeHtml(h.winningRestaurant)}${h.winnerByVote ? ' <span class="muted">(top vote)</span>' : ''}`
+              : '<span class="muted">—</span>'}</td>
             <td>${h.attendeeCount}</td>
           </tr>`,
         )
@@ -174,7 +176,7 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
 
     <section>
       <h2>Restaurant leaderboard</h2>
-      <p class="sub">Most-voted spots across all sessions, with how often each was the locked choice (BR-072).</p>
+      <p class="sub">Most-voted spots across all sessions, with how often each was the winning pick — locked, or the vote leader when no lock (BR-072).</p>
       <canvas id="restaurantChart"></canvas>
       <table>
         <thead><tr><th>Restaurant</th><th>Total votes</th><th>Times proposed</th><th>Wins</th><th>Win rate</th></tr></thead>
@@ -209,7 +211,7 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
 
     <section>
       <h2>Session history</h2>
-      <p class="sub">Every lunch session, newest first (BR-071).</p>
+      <p class="sub">Every lunch session, newest first. Winner is the locked restaurant, or the vote leader marked "(top vote)" when none was locked (BR-071).</p>
       <table>
         <thead><tr><th>Date</th><th>Status</th><th>Lunch</th><th>Winning restaurant</th><th>Attendees</th></tr></thead>
         <tbody>${historyRows}</tbody>

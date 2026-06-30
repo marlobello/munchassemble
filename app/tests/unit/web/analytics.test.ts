@@ -108,9 +108,54 @@ describe('buildHistory', () => {
     expect(row.attendeeCount).toBe(2);
   });
 
-  it('reports null winner when no restaurant is locked', () => {
+  it('reports null winner when there is no lock and no votes', () => {
     const [row] = buildHistory([{ session: session(), participants: [], restaurants: [], carpools: [] }]);
     expect(row.winningRestaurant).toBeNull();
+    expect(row.winnerByVote).toBe(false);
+  });
+
+  it('falls back to the top-voted restaurant when none is locked', () => {
+    const bundle: SessionBundle = {
+      session: session({ lockedRestaurantId: undefined }),
+      participants: [],
+      restaurants: [
+        restaurant({ id: 'r1', name: 'Tacos', votes: ['a'] }),
+        restaurant({ id: 'r2', name: 'Pizza', votes: ['b', 'c'] }),
+      ],
+      carpools: [],
+    };
+    const [row] = buildHistory([bundle]);
+    expect(row.winningRestaurant).toBe('Pizza');
+    expect(row.winnerByVote).toBe(true);
+  });
+
+  it('reports null winner on an unbroken tie', () => {
+    const bundle: SessionBundle = {
+      session: session({ lockedRestaurantId: undefined }),
+      participants: [],
+      restaurants: [
+        restaurant({ id: 'r1', name: 'Tacos', votes: ['a'] }),
+        restaurant({ id: 'r2', name: 'Pizza', votes: ['b'] }),
+      ],
+      carpools: [],
+    };
+    const [row] = buildHistory([bundle]);
+    expect(row.winningRestaurant).toBeNull();
+  });
+
+  it('prefers the explicit lock over the vote leader', () => {
+    const bundle: SessionBundle = {
+      session: session({ lockedRestaurantId: 'r1' }),
+      participants: [],
+      restaurants: [
+        restaurant({ id: 'r1', name: 'Tacos', votes: ['a'] }),
+        restaurant({ id: 'r2', name: 'Pizza', votes: ['b', 'c'] }),
+      ],
+      carpools: [],
+    };
+    const [row] = buildHistory([bundle]);
+    expect(row.winningRestaurant).toBe('Tacos');
+    expect(row.winnerByVote).toBe(false);
   });
 });
 
@@ -142,6 +187,23 @@ describe('buildRestaurantInsights', () => {
     const pizza = insights.find((r) => r.name === 'Pizza')!;
     expect(pizza.wins).toBe(1);
     expect(pizza.winRate).toBe(1);
+  });
+
+  it('credits a win to the vote leader when no restaurant was locked', () => {
+    const bundles: SessionBundle[] = [
+      {
+        session: session({ id: 's1', lockedRestaurantId: undefined }),
+        participants: [],
+        restaurants: [
+          restaurant({ id: 'r1', name: 'Tacos', votes: ['a'] }),
+          restaurant({ id: 'r2', name: 'Pizza', votes: ['b', 'c'] }),
+        ],
+        carpools: [],
+      },
+    ];
+    const insights = buildRestaurantInsights(bundles);
+    expect(insights.find((r) => r.name === 'Pizza')!.wins).toBe(1);
+    expect(insights.find((r) => r.name === 'Tacos')!.wins).toBe(0);
   });
 });
 

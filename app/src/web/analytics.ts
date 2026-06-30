@@ -26,6 +26,8 @@ export interface SessionHistoryRow {
   lunchTime: string;
   departTime: string;
   winningRestaurant: string | null;
+  /** True when the winner was inferred from the vote leader (no explicit lock). */
+  winnerByVote: boolean;
   attendeeCount: number;
 }
 
@@ -102,11 +104,36 @@ function bestDisplayName(p: Participant): string {
   return p.displayName || p.username || p.userId;
 }
 
+/**
+ * Resolve a session's winning restaurant. A restaurant is often never explicitly
+ * "locked" (BR-023) even when finalized, so we fall back to the vote leader:
+ *   1. The explicitly locked restaurant, if any (definitive).
+ *   2. Otherwise the unique top-voted restaurant (votes > 0).
+ *   3. Otherwise none (no votes, or an unbroken tie at the top).
+ */
+export interface ResolvedWinner {
+  restaurant: Restaurant | null;
+  /** A winner was determined (locked or a unique vote leader). */
+  decided: boolean;
+  /** The winner came from votes rather than an explicit lock. */
+  byVote: boolean;
+}
+
+export function resolveWinner(session: LunchSession, restaurants: Restaurant[]): ResolvedWinner {
+  if (session.lockedRestaurantId) {
+    const locked = restaurants.find((r) => r.id === session.lockedRestaurantId);
+    if (locked) return { restaurant: locked, decided: true, byVote: false };
+  }
+  const maxVotes = restaurants.reduce((m, r) => Math.max(m, r.votes.length), 0);
+  if (maxVotes === 0) return { restaurant: null, decided: false, byVote: false };
+  const leaders = restaurants.filter((r) => r.votes.length === maxVotes);
+  if (leaders.length === 1) return { restaurant: leaders[0], decided: true, byVote: true };
+  return { restaurant: null, decided: false, byVote: false }; // tie — undecided
+}
+
 export function buildHistory(bundles: SessionBundle[]): SessionHistoryRow[] {
   return bundles.map(({ session, participants, restaurants }) => {
-    const locked = session.lockedRestaurantId
-      ? restaurants.find((r) => r.id === session.lockedRestaurantId)
-      : undefined;
+    const winner = resolveWinner(session, restaurants);
     const attendeeCount = participants.filter(
       (p) => p.attendanceStatus === AttendanceStatus.In,
     ).length;
@@ -116,7 +143,8 @@ export function buildHistory(bundles: SessionBundle[]): SessionHistoryRow[] {
       status: session.status,
       lunchTime: session.lunchTime,
       departTime: session.departTime,
-      winningRestaurant: locked?.name ?? null,
+      winningRestaurant: winner.decided ? winner.restaurant!.name : null,
+      winnerByVote: winner.byVote,
       attendeeCount,
     };
   });
@@ -126,6 +154,7 @@ export function buildRestaurantInsights(bundles: SessionBundle[]): RestaurantIns
   const byName = new Map<string, RestaurantInsight>();
 
   for (const { session, restaurants } of bundles) {
+    const winner = resolveWinner(session, restaurants);
     for (const r of restaurants) {
       const key = r.name.trim();
       const entry =
@@ -133,7 +162,7 @@ export function buildRestaurantInsights(bundles: SessionBundle[]): RestaurantIns
         { name: key, totalVotes: 0, timesProposed: 0, wins: 0, winRate: 0 };
       entry.totalVotes += r.votes.length;
       entry.timesProposed += 1;
-      if (session.lockedRestaurantId === r.id) entry.wins += 1;
+      if (winner.decided && winner.restaurant!.id === r.id) entry.wins += 1;
       byName.set(key, entry);
     }
   }
