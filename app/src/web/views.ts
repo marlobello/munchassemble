@@ -39,6 +39,11 @@ const STYLE = `
   .card .n { font-size: 28px; font-weight: 700; }
   .card .l { font-size: 13px; color: #9aa3b2; }
   section { background: #161a22; border: 1px solid #232938; border-radius: 10px; padding: 20px; margin-bottom: 24px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+  .two-col > section { margin-bottom: 24px; }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+  .chart-ctl { display: inline-block; font-size: 13px; color: #9aa3b2; margin-bottom: 12px; }
+  .chart-ctl select { background: #0f1115; color: #e7e9ee; border: 1px solid #232938; border-radius: 6px; padding: 4px 8px; margin-left: 6px; }
   section h2 { margin: 0 0 4px; font-size: 16px; }
   section .sub { color: #9aa3b2; font-size: 13px; margin: 0 0 16px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -95,16 +100,16 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
         .map(
           (h) => `<tr>
             <td>${escapeHtml(h.date)}</td>
-            <td>${escapeHtml(h.status)}</td>
-            <td>${escapeHtml(h.lunchTime)}</td>
             <td>${h.winningRestaurant
               ? `${escapeHtml(h.winningRestaurant)}${h.winnerByVote ? ' <span class="muted">(top vote)</span>' : ''}`
               : '<span class="muted">—</span>'}</td>
-            <td>${h.attendeeCount}</td>
+            <td>${h.attendees.length
+              ? `<span class="muted">${h.attendees.length}:</span> ${escapeHtml(h.attendees.join(', '))}`
+              : '<span class="muted">—</span>'}</td>
           </tr>`,
         )
         .join('')
-    : '<tr><td colspan="5" class="muted">No sessions yet.</td></tr>';
+    : '<tr><td colspan="3" class="muted">No sessions yet.</td></tr>';
 
   const restaurantRows = summary.restaurants.length
     ? summary.restaurants
@@ -153,6 +158,8 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
   const restaurantChart = {
     labels: topRestaurants.map((r) => r.name),
     votes: topRestaurants.map((r) => r.totalVotes),
+    proposed: topRestaurants.map((r) => r.timesProposed),
+    wins: topRestaurants.map((r) => r.wins),
   };
   const attendanceChart = {
     labels: summary.attendance.perSession.map((s) => s.date),
@@ -177,6 +184,13 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
     <section>
       <h2>Restaurant leaderboard</h2>
       <p class="sub">Most-voted spots across all sessions, with how often each was the winning pick — locked, or the vote leader when no lock (BR-072).</p>
+      <label class="chart-ctl">Show:
+        <select id="restaurantMetric">
+          <option value="votes">Total votes</option>
+          <option value="proposed">Times proposed</option>
+          <option value="wins">Wins</option>
+        </select>
+      </label>
       <canvas id="restaurantChart"></canvas>
       <table>
         <thead><tr><th>Restaurant</th><th>Total votes</th><th>Times proposed</th><th>Wins</th><th>Win rate</th></tr></thead>
@@ -194,26 +208,28 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
       </table>
     </section>
 
-    <section>
-      <h2>Transport & carpools</h2>
-      <p class="sub">Who drives most, seats offered vs. rides given (BR-074).</p>
-      <table>
-        <thead><tr><th>Driver</th><th>Times driving</th><th>Seats offered</th><th>Rides given</th></tr></thead>
-        <tbody>${driverRows}</tbody>
-      </table>
-    </section>
+    <div class="two-col">
+      <section>
+        <h2>Transport & carpools</h2>
+        <p class="sub">Who drives most, seats offered vs. rides given (BR-074).</p>
+        <table>
+          <thead><tr><th>Driver</th><th>Times driving</th><th>Seats offered</th><th>Rides given</th></tr></thead>
+          <tbody>${driverRows}</tbody>
+        </table>
+      </section>
 
-    <section>
-      <h2>Muster point usage</h2>
-      <p class="sub">How often each pickup location is used (BR-075).</p>
-      <canvas id="musterChart"></canvas>
-    </section>
+      <section>
+        <h2>Muster point usage</h2>
+        <p class="sub">How often each pickup location is used (BR-075).</p>
+        <canvas id="musterChart"></canvas>
+      </section>
+    </div>
 
     <section>
       <h2>Session history</h2>
       <p class="sub">Every lunch session, newest first. Winner is the locked restaurant, or the vote leader marked "(top vote)" when none was locked (BR-071).</p>
       <table>
-        <thead><tr><th>Date</th><th>Status</th><th>Lunch</th><th>Winning restaurant</th><th>Attendees</th></tr></thead>
+        <thead><tr><th>Date</th><th>Winning restaurant</th><th>Attendees</th></tr></thead>
         <tbody>${historyRows}</tbody>
       </table>
     </section>
@@ -226,11 +242,22 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
     const A = ${safeJson(attendanceChart)};
     const M = ${safeJson(musterChart)};
     const grid = { color: 'rgba(255,255,255,0.06)' };
-    if (R.labels.length) new Chart(document.getElementById('restaurantChart'), {
-      type: 'bar',
-      data: { labels: R.labels, datasets: [{ label: 'Total votes', data: R.votes, backgroundColor: '#5865F2' }] },
-      options: { plugins: { legend: { display: false } }, scales: { x: { grid }, y: { grid, beginAtZero: true } } }
-    });
+    const metricLabels = { votes: 'Total votes', proposed: 'Times proposed', wins: 'Wins' };
+    let restaurantChartObj = null;
+    if (R.labels.length) {
+      restaurantChartObj = new Chart(document.getElementById('restaurantChart'), {
+        type: 'bar',
+        data: { labels: R.labels, datasets: [{ label: metricLabels.votes, data: R.votes, backgroundColor: '#5865F2' }] },
+        options: { plugins: { legend: { display: false } }, scales: { x: { grid }, y: { grid, beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+      const sel = document.getElementById('restaurantMetric');
+      sel && sel.addEventListener('change', (e) => {
+        const m = e.target.value;
+        restaurantChartObj.data.datasets[0].data = R[m];
+        restaurantChartObj.data.datasets[0].label = metricLabels[m];
+        restaurantChartObj.update();
+      });
+    }
     if (A.labels.length) new Chart(document.getElementById('attendanceChart'), {
       type: 'bar',
       data: { labels: A.labels, datasets: [

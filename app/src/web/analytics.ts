@@ -29,6 +29,8 @@ export interface SessionHistoryRow {
   /** True when the winner was inferred from the vote leader (no explicit lock). */
   winnerByVote: boolean;
   attendeeCount: number;
+  /** Display names of attendees marked "In", alphabetically sorted. */
+  attendees: string[];
 }
 
 /** Restaurant leaderboard entry (BR-072). */
@@ -134,9 +136,10 @@ export function resolveWinner(session: LunchSession, restaurants: Restaurant[]):
 export function buildHistory(bundles: SessionBundle[]): SessionHistoryRow[] {
   return bundles.map(({ session, participants, restaurants }) => {
     const winner = resolveWinner(session, restaurants);
-    const attendeeCount = participants.filter(
-      (p) => p.attendanceStatus === AttendanceStatus.In,
-    ).length;
+    const attendees = participants
+      .filter((p) => p.attendanceStatus === AttendanceStatus.In)
+      .map(bestDisplayName)
+      .sort((a, b) => a.localeCompare(b));
     return {
       id: session.id,
       date: session.date,
@@ -145,7 +148,8 @@ export function buildHistory(bundles: SessionBundle[]): SessionHistoryRow[] {
       departTime: session.departTime,
       winningRestaurant: winner.decided ? winner.restaurant!.name : null,
       winnerByVote: winner.byVote,
-      attendeeCount,
+      attendeeCount: attendees.length,
+      attendees,
     };
   });
 }
