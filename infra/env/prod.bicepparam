@@ -13,5 +13,5 @@ param discordOAuthClientId = '1487902529982566551'
 param webCustomDomain = 'munchassemble.dotheneedful.dev'
 // Managed TLS cert is two-phase: deploy with false first (registers the hostname), then
 // flip to true and redeploy (issues + binds the cert). See docs/runbooks/README.md.
-param webEnableManagedCert = false
+param webEnableManagedCert = true
 // containerImage / webContainerImage are set at deploy time by deploy-app.yml / deploy-web.yml — leave as default placeholders here
