@@ -39,3 +39,6 @@ Thumbs.db
 
 # Compiled Bicep ARM output (generated from infra/*.bicep via `az bicep build`)
 infra/main.json
+
+# Local one-off Cosmos cleanup script (never commit)
+app/cleanup-temp.mjs
