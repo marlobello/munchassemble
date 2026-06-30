@@ -15,10 +15,76 @@ jest.mock('../../../src/db/repositories/restaurantRepo', () => ({
   removeVoteFromAll: jest.fn(),
 }));
 
-import { startSession, completeSession, getCompletedSessionsForGuild } from '../../../src/services/sessionService';
-import { addRestaurant } from '../../../src/services/restaurantService';
+import { startSession, completeSession, getCompletedSessionsForGuild, finalizeSession } from '../../../src/services/sessionService';
+import { addRestaurant, pickWinningRestaurant } from '../../../src/services/restaurantService';
 import * as sessionRepo from '../../../src/db/repositories/sessionRepo';
+import * as restaurantRepo from '../../../src/db/repositories/restaurantRepo';
 import { SessionStatus } from '../../../src/types';
+
+function makeSession(over = {}) {
+  return {
+    id: 's1', guildId: 'g1', channelId: 'c1', messageId: 'm1', creatorId: 'u1',
+    date: '2026-05-10', lunchTime: '11:15', departTime: '11:00',
+    status: SessionStatus.Planning, createdAt: '2026-05-10T00:00:00.000Z',
+    updatedAt: '2026-05-10T00:00:00.000Z', ...over,
+  };
+}
+
+function makeRestaurant(over = {}) {
+  return { id: 'r1', sessionId: 's1', name: 'Tacos', addedBy: 'u1', votes: [], createdAt: '2026-05-10T00:00:00.000Z', ...over };
+}
+
+describe('pickWinningRestaurant', () => {
+  it('returns the most-voted restaurant', () => {
+    const r = pickWinningRestaurant([
+      makeRestaurant({ id: 'r1', votes: ['a'] }),
+      makeRestaurant({ id: 'r2', votes: ['b', 'c'] }),
+    ]);
+    expect(r?.id).toBe('r2');
+  });
+
+  it('returns null when there are no votes', () => {
+    expect(pickWinningRestaurant([makeRestaurant({ votes: [] })])).toBeNull();
+    expect(pickWinningRestaurant([])).toBeNull();
+  });
+
+  it('breaks ties deterministically by createdAt', () => {
+    const r = pickWinningRestaurant([
+      makeRestaurant({ id: 'r2', votes: ['b'], createdAt: '2026-05-10T02:00:00.000Z' }),
+      makeRestaurant({ id: 'r1', votes: ['a'], createdAt: '2026-05-10T01:00:00.000Z' }),
+    ]);
+    expect(r?.id).toBe('r1');
+  });
+});
+
+describe('sessionService.finalizeSession', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('auto-locks the top-voted restaurant when none is locked', async () => {
+    (restaurantRepo.getRestaurantsForSession as jest.Mock).mockResolvedValueOnce([
+      makeRestaurant({ id: 'r1', votes: ['a'] }),
+      makeRestaurant({ id: 'r2', votes: ['b', 'c'] }),
+    ]);
+    const result = await finalizeSession(makeSession());
+    expect(result.status).toBe(SessionStatus.Locked);
+    expect(result.lockedRestaurantId).toBe('r2');
+  });
+
+  it('preserves an already-locked restaurant', async () => {
+    const result = await finalizeSession(makeSession({ lockedRestaurantId: 'r9' }));
+    expect(result.lockedRestaurantId).toBe('r9');
+    expect(restaurantRepo.getRestaurantsForSession).not.toHaveBeenCalled();
+  });
+
+  it('finalizes without a lock when there are no votes', async () => {
+    (restaurantRepo.getRestaurantsForSession as jest.Mock).mockResolvedValueOnce([
+      makeRestaurant({ id: 'r1', votes: [] }),
+    ]);
+    const result = await finalizeSession(makeSession());
+    expect(result.status).toBe(SessionStatus.Locked);
+    expect(result.lockedRestaurantId).toBeUndefined();
+  });
+});
 
 describe('sessionService.startSession', () => {
   beforeEach(() => jest.clearAllMocks());

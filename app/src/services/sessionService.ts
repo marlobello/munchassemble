@@ -10,6 +10,8 @@ import {
   getSessionById,
   getLocalToday,
 } from '../db/repositories/sessionRepo.js';
+import { getRestaurantsForSession } from '../db/repositories/restaurantRepo.js';
+import { pickWinningRestaurant } from './restaurantService.js';
 
 export interface CreateSessionInput {
   guildId: string;
@@ -70,8 +72,19 @@ export async function lockRestaurant(session: LunchSession, restaurantId: string
   return updateSession({ ...session, lockedRestaurantId: restaurantId });
 }
 
+/**
+ * Finalize (lock) a session (BR-004). If no restaurant was explicitly locked yet,
+ * automatically lock the highest-voted one (BR-023) so the finalized plan always has a
+ * chosen restaurant when votes exist. Sessions with no votes finalize without a lock.
+ */
 export async function finalizeSession(session: LunchSession): Promise<LunchSession> {
-  return updateSession({ ...session, status: SessionStatus.Locked });
+  let lockedRestaurantId = session.lockedRestaurantId;
+  if (!lockedRestaurantId) {
+    const restaurants = await getRestaurantsForSession(session.id);
+    const winner = pickWinningRestaurant(restaurants);
+    if (winner) lockedRestaurantId = winner.id;
+  }
+  return updateSession({ ...session, status: SessionStatus.Locked, lockedRestaurantId });
 }
 
 export async function cancelSession(session: LunchSession): Promise<LunchSession> {

@@ -41,4 +41,4 @@ Thumbs.db
 infra/main.json
 
 # Local one-off Cosmos cleanup script (never commit)
-app/cleanup-temp.mjs
+app/*-temp.mjs

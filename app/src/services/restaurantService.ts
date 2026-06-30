@@ -9,6 +9,19 @@ import {
 } from '../db/repositories/restaurantRepo.js';
 import { DuplicateError } from '../utils/errors.js';
 
+/**
+ * The winning restaurant for a session = the one with the most votes (BR-022/BR-023).
+ * Returns null when there are no votes at all. Ties are broken deterministically
+ * (earliest created, then id) so auto-lock at finalize is stable.
+ */
+export function pickWinningRestaurant(restaurants: Restaurant[]): Restaurant | null {
+  const maxVotes = restaurants.reduce((m, r) => Math.max(m, r.votes.length), 0);
+  if (maxVotes === 0) return null;
+  return [...restaurants]
+    .filter((r) => r.votes.length === maxVotes)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))[0];
+}
+
 export async function addRestaurant(
   sessionId: string,
   name: string,
