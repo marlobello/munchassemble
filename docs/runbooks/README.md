@@ -192,7 +192,18 @@ az containerapp show -n ca-munchassemble-prod -g rg-munchassemble-prod \
   --query properties.customDomainVerificationId -o tsv
 ```
 
-Then deploy infra — the managed certificate is issued and the domain bound in one pass:
+Container Apps managed certificates require a **two-phase deploy** (Azure must see the
+hostname registered on the app before it will issue the cert). The `webEnableManagedCert`
+param controls this:
+
+**Phase 1** — `webEnableManagedCert = false` (default): registers the hostname on the web
+app (bindingType `Disabled`). Deploy:
+```bash
+gh workflow run deploy-infra.yml --ref main
+```
+
+**Phase 2** — set `webEnableManagedCert = true` in `infra/env/prod.bicepparam`, commit,
+and deploy again: issues the managed cert and binds it (`SniEnabled`):
 ```bash
 gh workflow run deploy-infra.yml --ref main
 ```

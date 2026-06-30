@@ -27,6 +27,9 @@ param discordOAuthClientId string = ''
 @description('Optional custom domain for the analytics web app (e.g. munchassemble.dotheneedful.dev). Empty = use the default azurecontainerapps.io FQDN. Requires DNS records (CNAME + asuid TXT) created first — see docs/runbooks.')
 param webCustomDomain string = ''
 
+@description('Managed TLS cert two-phase toggle. Deploy false first (registers the hostname), then true (issues + binds the cert). See docs/runbooks.')
+param webEnableManagedCert bool = false
+
 @description('Optional Discord Guild ID — restricts command registration to one guild.')
 param discordGuildId string = ''
 
@@ -135,6 +138,7 @@ module webApp 'modules/webContainerApp.bicep' = {
     discordOAuthClientId: discordOAuthClientId
     baseUrl: webBaseUrl
     customDomain: webCustomDomain
+    enableManagedCert: webEnableManagedCert
     env: env
   }
 }

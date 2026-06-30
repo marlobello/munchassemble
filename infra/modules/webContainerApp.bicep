@@ -41,6 +41,9 @@ param baseUrl string = ''
 @description('Optional custom domain to bind to the web app (e.g. munchassemble.dotheneedful.dev). Empty = use the default azurecontainerapps.io FQDN. Requires the CNAME + asuid TXT DNS records to exist first (see runbooks).')
 param customDomain string = ''
 
+@description('Managed cert is a TWO-PHASE process. Phase 1 (false): register the hostname (bindingType Disabled) so the cert can be issued. Phase 2 (true): issue the managed cert and bind it (SniEnabled). Deploy false first, then true. See runbooks.')
+param enableManagedCert bool = false
+
 @description('Port the web server listens on')
 param webPort int = 8080
 
@@ -48,15 +51,17 @@ param webPort int = 8080
 param env string = 'prod'
 
 var useCustomDomain = !empty(customDomain)
+var bindCert = useCustomDomain && enableManagedCert
 
 // Free Azure-managed TLS certificate for the custom domain. Validated via the
-// asuid.<host> TXT record + CNAME (domainControlValidation: CNAME). Created on the
-// shared Container Apps Environment. Only deployed when a custom domain is configured.
+// asuid.<host> TXT record + CNAME (domainControlValidation: CNAME). Azure requires the
+// hostname to already be registered as a custom domain on an app (phase 1) before the
+// cert can be created (phase 2), so the cert is only deployed when enableManagedCert=true.
 resource managedEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
   name: environmentName
 }
 
-resource managedCert 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (useCustomDomain) {
+resource managedCert 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (bindCert) {
   parent: managedEnv
   name: 'cert-${replace(customDomain, '.', '-')}'
   location: location
@@ -82,13 +87,20 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: webPort
         transport: 'auto'
         allowInsecure: false // TLS enforced (NFR §1)
-        customDomains: useCustomDomain ? [
+        customDomains: !useCustomDomain ? [] : (enableManagedCert ? [
           {
             name: customDomain
             bindingType: 'SniEnabled'
             certificateId: managedCert.id
           }
-        ] : []
+        ] : [
+          {
+            // Phase 1: register the hostname (validated via asuid TXT) with no cert yet,
+            // so the managed certificate can be issued on the phase-2 deploy.
+            name: customDomain
+            bindingType: 'Disabled'
+          }
+        ])
       }
     }
     template: {

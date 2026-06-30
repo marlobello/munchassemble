@@ -11,4 +11,7 @@ param discordOAuthClientId = '1487902529982566551'
 // Custom domain for the analytics web app. DNS records (CNAME + asuid TXT) must exist
 // in Cloudflare before deploying — see docs/runbooks/README.md.
 param webCustomDomain = 'munchassemble.dotheneedful.dev'
+// Managed TLS cert is two-phase: deploy with false first (registers the hostname), then
+// flip to true and redeploy (issues + binds the cert). See docs/runbooks/README.md.
+param webEnableManagedCert = false
 // containerImage / webContainerImage are set at deploy time by deploy-app.yml / deploy-web.yml — leave as default placeholders here
