@@ -69,7 +69,7 @@ function layout(title: string, user: DiscordUser | null, inner: string, scripts 
   <style>${STYLE}</style>
 </head>
 <body>
-  <header><h1>🍔 Munch Assemble · Analytics</h1>${userBar}</header>
+  <header><h1>🍕 Munch Assemble · Analytics</h1>${userBar}</header>
   ${inner}
   ${scripts}
 </body>
