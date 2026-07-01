@@ -183,7 +183,7 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
 
     <section>
       <h2>Restaurant leaderboard</h2>
-      <p class="sub">Most-voted spots across all sessions, with how often each was the winning pick — locked, or the vote leader when no lock (BR-072).</p>
+      <p class="sub">Most-voted spots across all sessions, with how often each was the winning pick — locked, or the vote leader when no lock.</p>
       <label class="chart-ctl">Show:
         <select id="restaurantMetric">
           <option value="votes">Total votes</option>
@@ -200,7 +200,7 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
 
     <section>
       <h2>Attendance trends</h2>
-      <p class="sub">RSVP counts per session and per-person reliability (BR-073).</p>
+      <p class="sub">RSVP counts per session and per-person reliability.</p>
       <canvas id="attendanceChart"></canvas>
       <table>
         <thead><tr><th>Member</th><th>Sessions</th><th>In</th><th>Maybe</th><th>Out</th><th>Attendance rate</th></tr></thead>
@@ -211,7 +211,7 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
     <div class="two-col">
       <section>
         <h2>Transport & carpools</h2>
-        <p class="sub">Who drives most, seats offered vs. rides given (BR-074).</p>
+        <p class="sub">Who drives most, seats offered vs. rides given.</p>
         <table>
           <thead><tr><th>Driver</th><th>Times driving</th><th>Seats offered</th><th>Rides given</th></tr></thead>
           <tbody>${driverRows}</tbody>
@@ -220,14 +220,14 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
 
       <section>
         <h2>Muster point usage</h2>
-        <p class="sub">How often each pickup location is used (BR-075).</p>
+        <p class="sub">How often each pickup location is used.</p>
         <canvas id="musterChart"></canvas>
       </section>
     </div>
 
     <section>
       <h2>Session history</h2>
-      <p class="sub">Every lunch session, newest first. Winner is the locked restaurant, or the vote leader marked "(top vote)" when none was locked (BR-071).</p>
+      <p class="sub">Every lunch session, newest first. Winner is the locked restaurant, or the vote leader marked "(top vote)" when none was locked.</p>
       <table>
         <thead><tr><th>Date</th><th>Winning restaurant</th><th>Attendees</th></tr></thead>
         <tbody>${historyRows}</tbody>
