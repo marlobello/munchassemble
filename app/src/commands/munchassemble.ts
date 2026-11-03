@@ -2,9 +2,9 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   ModalBuilder,
+  LabelBuilder,
   TextInputBuilder,
   TextInputStyle,
-  ActionRowBuilder,
   MessageFlags,
   Client,
 } from 'discord.js';
@@ -108,36 +108,32 @@ async function handleCreate(
 
   const dateInput = new TextInputBuilder()
     .setCustomId('date')
-    .setLabel('Date (YYYY-MM-DD)')
     .setStyle(TextInputStyle.Short)
     .setValue(today)
     .setRequired(true);
 
   const lunchTimeInput = new TextInputBuilder()
     .setCustomId('lunchTime')
-    .setLabel('Lunch time (HH:MM, 24h)')
     .setStyle(TextInputStyle.Short)
     .setValue('11:15')
     .setRequired(true);
 
   const departTimeInput = new TextInputBuilder()
     .setCustomId('departTime')
-    .setLabel('Departure time (HH:MM, 24h)')
     .setStyle(TextInputStyle.Short)
     .setValue('11:00')
     .setRequired(true);
 
   const notesInput = new TextInputBuilder()
     .setCustomId('notes')
-    .setLabel('Notes (optional, e.g. "quick lunch")')
     .setStyle(TextInputStyle.Short)
     .setRequired(false);
 
-  modal.addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(dateInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(lunchTimeInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(departTimeInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(notesInput),
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Date (YYYY-MM-DD)').setTextInputComponent(dateInput),
+    new LabelBuilder().setLabel('Lunch time (HH:MM, 24h)').setTextInputComponent(lunchTimeInput),
+    new LabelBuilder().setLabel('Departure time (HH:MM, 24h)').setTextInputComponent(departTimeInput),
+    new LabelBuilder().setLabel('Notes (optional, e.g. "quick lunch")').setTextInputComponent(notesInput),
   );
 
   await interaction.showModal(modal);

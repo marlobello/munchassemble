@@ -13,7 +13,12 @@ Deployment is fully automated via GitHub Actions on push to `main`.
 | `app/**` | `deploy-app.yml` | Build Docker image → push to GHCR → update **bot** Container App revision |
 | `app/**` | `deploy-web.yml` | Build `Dockerfile.web` image → push to GHCR → update **analytics web** Container App revision |
 | `infra/**` | `deploy-infra.yml` | `az deployment group create` with Bicep |
-| Both | Both workflows run concurrently |
+| Both | All three release workflows queue in the shared `deploy-prod` concurrency group |
+
+The queue retains pending runs (`queue: max`) rather than cancelling an earlier
+release. Before an infrastructure update, both running image references are read
+and passed to Bicep. Image releases audit, build, type-check, lint, and test before
+publishing, so a failed gate cannot release a new image.
 
 **To trigger manually** (e.g. re-run failed deploy):
 ```bash
@@ -21,6 +26,63 @@ gh workflow run deploy-app.yml --ref main
 gh workflow run deploy-web.yml --ref main
 gh workflow run deploy-infra.yml --ref main
 ```
+
+---
+
+## Dependency and API Maintenance
+
+Implements BRD section 3 (session creation, carpool, time editing, reminders,
+and private analytics); satisfies NFR sections 1, 2, and 6.
+
+1. Use the Node 26 patch in `app/.node-version`; keep CI, Node types, package
+   engines, and both digest-pinned Docker bases aligned.
+2. Review monthly Dependabot updates for npm, Docker, and GitHub Actions.
+   Also review the exact Chart.js CDN version in `app/src/web/views.ts`,
+   Bicep CLI, and resource-specific ARM stable versions and retirement notices.
+3. Keep TypeScript on 6.0.x until TypeScript ESLint and ts-jest support a newer
+   compiler. Upgrade Jest and its types together. Do not force unsupported peers.
+4. Validate locally from `app/`:
+   ```bash
+   npm ci
+   npm run build
+   npm run typecheck
+   npm run lint
+   npm test -- --runInBand --coverage
+   npm run audit
+   npm audit --omit=dev
+   ```
+5. Review the temporary `glob`/`minimatch` overrides when upstream ranges change;
+   coverage and test discovery must still work. Jest currently retains the
+   low-severity development-only `deepmerge` advisory GHSA-gcqx-w48m-w2h4,
+   with no patched release available. Do not downgrade Jest or suppress audits
+   to hide it. All moderate/high/critical findings have been removed from the
+   current graph; the enforced release gate remains no high/critical findings.
+6. Validate infra without resetting either app image:
+   ```bash
+   az bicep build --file infra/main.bicep
+   BOT_IMAGE=$(az containerapp show -g rg-munchassemble-prod -n ca-munchassemble-prod \
+     --query properties.template.containers[0].image -o tsv)
+   WEB_IMAGE=$(az containerapp show -g rg-munchassemble-prod -n ca-munchassemble-web-prod \
+     --query properties.template.containers[0].image -o tsv)
+   az deployment group what-if -g rg-munchassemble-prod \
+     --template-file infra/main.bicep --parameters infra/env/prod.bicepparam \
+     --parameters containerImage="$BOT_IMAGE" webContainerImage="$WEB_IMAGE"
+   ```
+   Key Vault APIs before 2026-02-01 retire on February 27, 2027; the template
+   now uses 2026-05-15. Secret reads use the independent data-plane SDK.
+   Check for unintended deletes, access changes, scaling, cost, or TLS changes
+   before releasing. Use GitHub Actions for the actual deployment.
+   The templates explicitly retain the deployed environment mode, peer-security
+   settings, scale timing, latest-revision traffic, Cosmos failover, indexing,
+   and conflict resolution. Provider-returned read-only/default fields and
+   unresolved `reference()` expressions may still appear as what-if noise.
+7. Verify both ready revisions use the expected commit image. Check bot startup
+   and guild registration without logging secrets; check the dashboard `/health`,
+   unauthenticated access, OAuth redirect, and guild-member login. Label-based
+   modals preserve the original input IDs; reminders must still fire once at
+   T-15 and T-5. Cancellation and shutdown destroy cron task registrations.
+
+No new GitHub secrets or environment variables are required for these upgrades.
 
 ---
 
@@ -226,4 +288,3 @@ in Discord; the app calls `/users/@me/guilds` and checks for an overlap.
 ### Deploy / rollback
 
 Same as the bot, but target `ca-munchassemble-web-prod` (see Deploy / Rollback above).
-

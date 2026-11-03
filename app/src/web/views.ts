@@ -236,7 +236,7 @@ export function renderDashboard(summary: AnalyticsSummary, user: DiscordUser): s
   </main>`;
 
   const scripts = `
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js"></script>
   <script>
     const R = ${safeJson(restaurantChart)};
     const A = ${safeJson(attendanceChart)};

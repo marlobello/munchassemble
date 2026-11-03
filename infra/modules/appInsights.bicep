@@ -14,7 +14,7 @@ param appInsightsName string
 @description('Environment tag')
 param env string = 'dev'
 
-resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+resource workspace 'Microsoft.OperationalInsights/workspaces@2026-03-01' = {
   name: workspaceName
   location: location
   properties: {

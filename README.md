@@ -141,7 +141,7 @@ Manage users who are permanently excluded from the **🔔 Ping Unanswered** remi
 | Persistent storage | Azure Cosmos DB for NoSQL (Serverless) |
 | Secrets | Azure Key Vault (Managed Identity access) |
 | Observability | Azure Application Insights |
-| Container registry | Azure Container Registry |
+| Container registry | GitHub Container Registry (GHCR) |
 | IaC | Azure Bicep (`infra/`) |
 | CI/CD | GitHub Actions (`.github/workflows/`) |
 
@@ -202,11 +202,11 @@ For local dev, copy `app/.env.example` to `app/.env` and fill in the values.
 
 ## Quick Start (Local Dev)
 
-> Prerequisites: Node.js LTS, Azure CLI
+> Prerequisites: Node.js 26 (exact CI version in `app/.node-version`), Azure CLI
 
 ```bash
 # Install dependencies
-cd app && npm install
+cd app && npm ci
 
 # Copy and fill in .env
 cp .env.example .env
@@ -215,7 +215,7 @@ cp .env.example .env
 npm run dev
 
 # Build & test
-npm run build && npm test
+npm run build && npm run typecheck && npm run lint && npm test && npm run audit
 ```
 
 ---
@@ -261,9 +261,26 @@ GitHub Actions workflows (requires Azure OIDC federated credentials):
 
 **Required GitHub secrets:** `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
 
+Production releases share a queued concurrency group so bot, web, and infrastructure
+updates cannot race. Infrastructure deployments preserve both running app images.
+All image releases enforce the app validation and no-high/critical audit gates.
+
+### Dependency maintenance
+
+The app uses Node 26, TypeScript 6.0.x (the supported lint/test-tool range), Jest 30,
+ESLint 10, node-cron 4, and current-generation Azure SDKs. Docker bases are
+digest-pinned; CI reads `app/.node-version`. Dependabot checks npm, Docker, and
+GitHub Actions monthly. The dashboard pins Chart.js to an exact CDN version.
+See [NFR section 6](docs/nfr.md#6-dependency-management) and the
+[maintenance runbook](docs/runbooks/README.md#dependency-and-api-maintenance) for
+ARM API checks, compatibility constraints, temporary transitive overrides, and
+the remaining upstream low-severity development-only advisory.
+
+Implements BRD section 3 (session, carpool, reminders, and private analytics);
+satisfies NFR sections 1, 2, and 6 without changing resource sizes or access roles.
+
 ---
 
 ## Contributing
 
 See [AGENTS.md](AGENTS.md) for AI agent workflow rules and code conventions.
-

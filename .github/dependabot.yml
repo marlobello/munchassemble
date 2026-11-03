@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /app
+    schedule:
+      interval: monthly
+    groups:
+      azure-sdk:
+        patterns: ['@azure/*']
+      typescript-eslint:
+        patterns: ['eslint', '@eslint/*', '@typescript-eslint/*']
+      jest:
+        patterns: ['jest', 'ts-jest', '@types/jest']
+  - package-ecosystem: docker
+    directory: /app
+    schedule:
+      interval: monthly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

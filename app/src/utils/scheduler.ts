@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import type { ScheduledTask } from 'node-cron';
 import type { Client, TextBasedChannel } from 'discord.js';
 import type { LunchSession } from '../types/index.js';
 import { TransportStatus, SessionStatus } from '../types/index.js';
@@ -11,7 +12,7 @@ import { buildNotificationSummary } from './notificationBuilder.js';
 import { logger } from './logger.js';
 
 // Map from sessionId to scheduled tasks
-const _jobs = new Map<string, cron.ScheduledTask[]>();
+const _jobs = new Map<string, ScheduledTask[]>();
 
 /**
  * Schedule T-15 and T-5 reminder jobs for a session, plus an auto-complete
@@ -30,13 +31,12 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
   // Auto-complete 60 min after lunch time (session is well and truly over)
   const autoComplete = computeAbsoluteTime(datePart, lunchH, lunchM, 60);
 
-  const jobs: cron.ScheduledTask[] = [];
+  const jobs: ScheduledTask[] = [];
 
   if (t15) {
     const task = cron.schedule(t15, async () => {
       await sendT15Reminder(session, client);
-      task.stop();
-    });
+    }, { maxExecutions: 1, noOverlap: true });
     jobs.push(task);
     logger.info(`[scheduler] T-15 reminder scheduled for session ${session.id} at ${t15}`);
   }
@@ -44,8 +44,7 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
   if (t5) {
     const task = cron.schedule(t5, async () => {
       await sendT5Reminder(session, client);
-      task.stop();
-    });
+    }, { maxExecutions: 1, noOverlap: true });
     jobs.push(task);
     logger.info(`[scheduler] T-5 reminder scheduled for session ${session.id} at ${t5}`);
   }
@@ -53,8 +52,7 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
   if (autoComplete) {
     const task = cron.schedule(autoComplete, async () => {
       await autoCompleteSession(session);
-      task.stop();
-    });
+    }, { maxExecutions: 1, noOverlap: true });
     jobs.push(task);
     logger.info(`[scheduler] Auto-complete scheduled for session ${session.id} at ${autoComplete}`);
   }
@@ -68,16 +66,16 @@ export function scheduleReminders(session: LunchSession, client: Client): void {
 export function cancelReminders(sessionId: string): void {
   const jobs = _jobs.get(sessionId);
   if (jobs) {
-    jobs.forEach((j) => j.stop());
+    jobs.forEach((j) => { void j.destroy(); });
     _jobs.delete(sessionId);
     logger.info(`[scheduler] Cancelled reminders for session ${sessionId}`);
   }
 }
 
-/** Stop every scheduled reminder job (used during graceful shutdown). */
+/** Destroy every scheduled reminder job (used during graceful shutdown). */
 export function cancelAllReminders(): void {
   for (const jobs of _jobs.values()) {
-    jobs.forEach((j) => j.stop());
+    jobs.forEach((j) => { void j.destroy(); });
   }
   _jobs.clear();
 }

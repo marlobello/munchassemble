@@ -6,7 +6,8 @@
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import type { WebConfig } from './webConfig.js';
 
-const DISCORD_API = 'https://discord.com/api';
+const DISCORD_OAUTH = 'https://discord.com/api/oauth2';
+const DISCORD_API = 'https://discord.com/api/v10';
 const OAUTH_SCOPES = 'identify guilds';
 
 /** Data we persist in the signed session cookie. */
@@ -139,7 +140,7 @@ export function buildAuthorizeUrl(config: WebConfig, state: string): string {
     scope: OAUTH_SCOPES,
     state,
   });
-  return `${DISCORD_API}/oauth2/authorize?${params.toString()}`;
+  return `${DISCORD_OAUTH}/authorize?${params.toString()}`;
 }
 
 export interface DiscordUser {
@@ -156,7 +157,7 @@ export async function exchangeCode(config: WebConfig, code: string): Promise<str
     code,
     redirect_uri: redirectUri(config),
   });
-  const res = await fetch(`${DISCORD_API}/oauth2/token`, {
+  const res = await fetch(`${DISCORD_OAUTH}/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,

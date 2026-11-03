@@ -96,6 +96,7 @@ async function main(): Promise<void> {
     logger.info(`[bot] Received ${signal} — shutting down gracefully...`);
     try {
       cancelAllReminders();
+      await cron.shutdown();
       await client.destroy();
       healthServer.close();
     } catch (err) {

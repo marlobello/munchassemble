@@ -16,12 +16,17 @@ param databaseName string = 'munchassemble'
 @description('Environment tag')
 param env string = 'dev'
 
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2026-03-15' = {
   name: accountName
   location: location
   kind: 'GlobalDocumentDB'
   properties: {
     databaseAccountOfferType: 'Standard'
+    enableAutomaticFailover: true
+    enablePerRegionPerPartitionAutoscale: false
+    enablePriorityBasedExecution: false
+    enforceHierarchicalPartitionKeyIdLastLevel: false
+    defaultPriorityLevel: 'High'
     locations: [
       {
         locationName: location
@@ -52,7 +57,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
   }
 }
 
-resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
+resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2026-03-15' = {
   parent: cosmosAccount
   name: databaseName
   properties: {

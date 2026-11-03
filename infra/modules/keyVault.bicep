@@ -12,7 +12,7 @@ param keyVaultName string
 @description('Environment tag')
 param env string = 'dev'
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
+resource keyVault 'Microsoft.KeyVault/vaults@2026-05-15' = {
   name: keyVaultName
   location: location
   properties: {

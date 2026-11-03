@@ -10,11 +10,11 @@ param principalId string
 @description('Cosmos SQL built-in data role GUID. Defaults to Data Contributor (read/write). Use 00000000-0000-0000-0000-000000000001 for read-only.')
 param roleDefinitionGuid string = '00000000-0000-0000-0000-000000000002'
 
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' existing = {
+resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2026-03-15' existing = {
   name: cosmosAccountName
 }
 
-resource roleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2024-05-15' = {
+resource roleAssignment 'Microsoft.DocumentDB/databaseAccounts/sqlRoleAssignments@2026-03-15' = {
   parent: cosmosAccount
   name: guid(cosmosAccount.id, principalId, roleDefinitionGuid)
   properties: {

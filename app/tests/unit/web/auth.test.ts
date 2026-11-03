@@ -11,6 +11,9 @@ import {
   isGuildMember,
   buildAuthorizeUrl,
   redirectUri,
+  exchangeCode,
+  fetchCurrentUser,
+  fetchUserGuildIds,
 } from '../../../src/web/auth';
 import type { WebConfig } from '../../../src/web/webConfig';
 
@@ -134,6 +137,35 @@ describe('buildAuthorizeUrl', () => {
     expect(url.searchParams.get('redirect_uri')).toBe('https://example.test/auth/callback');
     expect(url.searchParams.get('scope')).toBe('identify guilds');
     expect(url.searchParams.get('state')).toBe('state-abc');
+  });
+
+  describe('Discord network endpoints', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('uses v10 for user resources but leaves OAuth token exchange unversioned', async () => {
+      const fetch = jest.spyOn(globalThis, 'fetch')
+        .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'access' })))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ id: 'u1', username: 'alice' })))
+        .mockResolvedValueOnce(new Response(JSON.stringify([{ id: 'g1' }])));
+
+      await expect(exchangeCode(config, 'code')).resolves.toBe('access');
+      await expect(fetchCurrentUser('access')).resolves.toEqual({ id: 'u1', username: 'alice' });
+      await expect(fetchUserGuildIds('access')).resolves.toEqual(['g1']);
+
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+        'https://discord.com/api/oauth2/token',
+        'https://discord.com/api/v10/users/@me',
+        'https://discord.com/api/v10/users/@me/guilds',
+      ]);
+    });
+
+    it('preserves failures from the versioned guild endpoint', async () => {
+      jest.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 401 }));
+
+      await expect(fetchUserGuildIds('expired')).rejects.toThrow('Discord /users/@me/guilds failed: 401');
+    });
   });
 
   it('derives the redirect uri from the base url', () => {

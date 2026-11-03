@@ -57,11 +57,11 @@ var bindCert = useCustomDomain && enableManagedCert
 // asuid.<host> TXT record + CNAME (domainControlValidation: CNAME). Azure requires the
 // hostname to already be registered as a custom domain on an app (phase 1) before the
 // cert can be created (phase 2), so the cert is only deployed when enableManagedCert=true.
-resource managedEnv 'Microsoft.App/managedEnvironments@2024-03-01' existing = {
+resource managedEnv 'Microsoft.App/managedEnvironments@2026-07-01' existing = {
   name: environmentName
 }
 
-resource managedCert 'Microsoft.App/managedEnvironments/managedCertificates@2024-03-01' = if (bindCert) {
+resource managedCert 'Microsoft.App/managedEnvironments/managedCertificates@2026-07-01' = if (bindCert) {
   parent: managedEnv
   name: 'cert-${replace(customDomain, '.', '-')}'
   location: location
@@ -71,7 +71,7 @@ resource managedCert 'Microsoft.App/managedEnvironments/managedCertificates@2024
   }
 }
 
-resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource webApp 'Microsoft.App/containerApps@2026-07-01' = {
   name: appName
   location: location
   identity: {
@@ -87,6 +87,12 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         targetPort: webPort
         transport: 'auto'
         allowInsecure: false // TLS enforced (NFR §1)
+        traffic: [
+          {
+            latestRevision: true
+            weight: 100
+          }
+        ]
         customDomains: !useCustomDomain ? [] : (enableManagedCert ? [
           {
             name: customDomain
@@ -137,6 +143,8 @@ resource webApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
+        cooldownPeriod: 300
+        pollingInterval: 30
         // NFR §3/§4 — request-driven, non-critical analytics view. Scale-to-zero when
         // idle; a single replica comfortably serves the guild (~14 users).
         minReplicas: 0

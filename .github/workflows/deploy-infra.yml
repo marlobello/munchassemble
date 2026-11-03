@@ -14,6 +14,7 @@ on:
 concurrency:
   group: deploy-prod
   cancel-in-progress: false
+  queue: max
 
 env:
   AZURE_RESOURCE_GROUP: rg-munchassemble-prod
@@ -29,21 +30,30 @@ jobs:
     if: github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Install Bicep CLI
+        run: az bicep install --version v0.48.1
+
       - name: Bicep What-If
         run: |
+          IMAGE=$(az containerapp list --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='ca-munchassemble-prod'].properties.template.containers[0].image | [0]" -o tsv)
+          WEB_IMAGE=$(az containerapp list --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='ca-munchassemble-web-prod'].properties.template.containers[0].image | [0]" -o tsv)
           az deployment group what-if \
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
-            --parameters infra/env/prod.bicepparam
+            --parameters infra/env/prod.bicepparam \
+            --parameters containerImage="${IMAGE:-mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}" \
+              webContainerImage="${WEB_IMAGE:-mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}"
 
   deploy:
     name: Deploy Bicep
@@ -52,10 +62,10 @@ jobs:
     environment: prod
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -68,20 +78,30 @@ jobs:
             --location centralus \
             --output none
 
-      - name: Preserve current container image
+      - name: Install Bicep CLI
+        run: az bicep install --version v0.48.1
+
+      - name: Preserve current container images
         id: current_image
         run: |
-          IMAGE=$(az containerapp show \
-            --name ca-munchassemble-prod \
+          IMAGE=$(az containerapp list \
             --resource-group "$AZURE_RESOURCE_GROUP" \
-            --query "properties.template.containers[0].image" \
-            --output tsv 2>/dev/null || echo "")
+            --query "[?name=='ca-munchassemble-prod'].properties.template.containers[0].image | [0]" \
+            --output tsv)
+          WEB_IMAGE=$(az containerapp list \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --query "[?name=='ca-munchassemble-web-prod'].properties.template.containers[0].image | [0]" \
+            --output tsv)
           # Fall back to placeholder only on very first deploy (app not yet deployed)
           if [ -z "$IMAGE" ]; then
             IMAGE="mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
           fi
+          if [ -z "$WEB_IMAGE" ]; then
+            WEB_IMAGE="mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+          fi
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "Using image: $IMAGE"
+          echo "web-image=$WEB_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "Using bot image: $IMAGE; web image: $WEB_IMAGE"
 
       - name: Deploy Bicep
         run: |
@@ -90,4 +110,5 @@ jobs:
             --template-file infra/main.bicep \
             --parameters infra/env/prod.bicepparam \
             --parameters containerImage="${{ steps.current_image.outputs.image }}" \
+              webContainerImage="${{ steps.current_image.outputs.web-image }}" \
             --name "deploy-$(date +%Y%m%d-%H%M%S)"

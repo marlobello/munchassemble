@@ -1,5 +1,5 @@
 import type { ButtonInteraction, ModalSubmitInteraction } from 'discord.js';
-import { MessageFlags, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { MessageFlags, ModalBuilder, LabelBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { finalizeSession, cancelSession, updateSessionTimes } from '../services/sessionService.js';
 import { requireActiveSession } from '../utils/interactionHelpers.js';
 import { getParticipantsForSession, getUnansweredUserIds } from '../services/participantService.js';
@@ -167,21 +167,19 @@ export async function handleEditTimeButton(interaction: ButtonInteraction): Prom
 
   const lunchInput = new TextInputBuilder()
     .setCustomId('lunchTime')
-    .setLabel('Lunch time (HH:MM, 24h)')
     .setStyle(TextInputStyle.Short)
     .setValue(session.lunchTime)
     .setRequired(true);
 
   const departInput = new TextInputBuilder()
     .setCustomId('departTime')
-    .setLabel('Departure time (HH:MM, 24h)')
     .setStyle(TextInputStyle.Short)
     .setValue(session.departTime)
     .setRequired(true);
 
-  modal.addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(lunchInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(departInput),
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Lunch time (HH:MM, 24h)').setTextInputComponent(lunchInput),
+    new LabelBuilder().setLabel('Departure time (HH:MM, 24h)').setTextInputComponent(departInput),
   );
 
   await interaction.showModal(modal);

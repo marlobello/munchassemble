@@ -4,6 +4,7 @@ import {
   GuildMember,
   MessageFlags,
   ModalBuilder,
+  LabelBuilder,
   ModalSubmitInteraction,
   StringSelectMenuBuilder,
   StringSelectMenuInteraction,
@@ -168,11 +169,10 @@ export async function handleDrivingMusterSelect(
     .setCustomId(`modal:driving_seats:${sessionId}`)
     .setTitle(`🚗 Can Drive — ${musterName}`.slice(0, 45));
 
-  modal.addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(
+  modal.addLabelComponents(
+    new LabelBuilder().setLabel('Seats available (excluding yourself)').setTextInputComponent(
       new TextInputBuilder()
         .setCustomId('seats')
-        .setLabel('Seats available (excluding yourself)')
         .setStyle(TextInputStyle.Short)
         .setValue('3')
         .setRequired(true),

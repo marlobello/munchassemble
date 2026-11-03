@@ -4,6 +4,7 @@
 
 - **AuthN/AuthZ:** The bot uses a **Gateway WebSocket connection** (discord.js) — there is no public HTTP endpoint for Discord to call, so Ed25519 HTTP signature verification is not applicable (see ADR-0005). Discord authenticates the bot via the bot token stored in Azure Key Vault (see Secrets management below). Azure resources communicate via Azure Managed Identities — no shared keys between services.
   - **Analytics web app (Phase 4, ADR-0006):** Unlike the bot, the analytics web app exposes a **public HTTPS ingress** (its only inbound network boundary). It is gated by **Discord OAuth2** (Authorization Code flow); after login the app verifies the user is a member of the configured guild before serving any page, and issues a signed, httpOnly session cookie. The web app accesses Cosmos with a **separate managed identity holding only the built-in read-only data role** (least privilege) — it cannot mutate coordination data.
+  - Outbound Discord user and guild REST calls explicitly use API v10. OAuth authorization and token exchange retain Discord's unversioned OAuth2 endpoints; guild membership and cookie checks are unchanged.
 - **Secrets management:** Discord public key, bot token, the **Discord OAuth client secret** (web app), and any third-party credentials are stored in Azure Key Vault. The Container Apps access them at runtime via Managed Identity references; secrets are never committed to source control or baked into container images.
 - **Encryption requirements:** All traffic in transit uses TLS 1.2+. Data at rest in Cosmos DB is encrypted by default (Azure-managed keys). No additional customer-managed key (CMK) requirement at this time.
 - **Logging / audit:** Structured logs (JSON) emitted to stdout → forwarded to Application Insights. Logs must not contain Discord user tokens, message content, or PII beyond Discord user IDs necessary for feature operation. The analytics web app must not log OAuth tokens or session cookies.
@@ -14,6 +15,7 @@
 - **RPO / RTO:** No formal targets. Recovery is via redeployment from the CI/CD pipeline. Cosmos DB automatic backups provide a soft RPO of ~1 hour (platform default).
 - **Multi-region strategy:** Single region (see §6). No active–active or active–passive failover planned.
 - **Resilience baseline:** Container App runs as a **single replica** (`minReplicas: 1`, `maxReplicas: 1`). The bot holds one Discord Gateway WebSocket and keeps multi-step interaction state and scheduler jobs in memory, so it must not be horizontally scaled — a second replica would duplicate the gateway connection and double-handle events. `minReplicas: 1` also eliminates cold-start latency. On revision swaps the bot handles **SIGTERM** for a graceful shutdown (disconnect gateway, stop cron jobs, close the health server).
+  - node-cron 4 reminder tasks run once, without overlapping executions. Replacing or cancelling reminders destroys their task registrations; shutdown also drains the nightly expiry scheduler.
 
 ## 3. Performance
 
@@ -41,11 +43,17 @@
 ## 6. Dependency Management
 
 - **Supported versions only:** All runtime dependencies (Node.js, npm packages, Azure SDKs, base container images) MUST be on actively supported, non-EOL versions at the time of adoption.
-- **Node.js:** Use the current LTS release. Upgrade to the next LTS within 3 months of the prior LTS reaching end-of-life.
+- **Node.js:** Use the current LTS release (26 as of November 2026). Keep `app/.node-version`, package engine/type definitions, CI, and Docker images aligned. Pin the container image digest and review patch/digest updates monthly. Upgrade to the next LTS within 3 months of the prior LTS reaching end-of-life.
 - **npm packages:** Prefer packages with active maintenance signals (recent releases, responsive issue tracker, high download velocity). Avoid packages marked deprecated or with no activity in > 1 year.
 - **Dependency audits:** `npm audit` (or equivalent) must pass with no high/critical vulnerabilities as part of CI. Findings must be remediated before merging.
+  - Both app release workflows run the same audit, build, test type-check, lint, and unit-test gates before publishing images. Never use forced dependency downgrades or audit exclusions to make these gates pass.
 - **Pinning strategy:** Pin exact versions in `package-lock.json`; use semver ranges in `package.json` for minor/patch updates. Review and update dependencies on a regular cadence (e.g., monthly via Dependabot or equivalent).
-- **Azure SDKs:** Use the `@azure/*` v12+ SDK family (the current generation). Do not use legacy Azure SDKs (e.g., `azure-*` v1 packages).
+- **Azure SDKs:** Use actively maintained, current-generation `@azure/*` packages. Major versions are package-specific: Cosmos, Identity, and Key Vault Secrets currently use 4.x; there is no universal v12 requirement. Do not use legacy `azure-*` packages.
+- **Toolchain compatibility:** Use ESLint 10 and Jest 30 with maintained TypeScript ESLint and ts-jest releases. TypeScript remains on the compatible 6.0.x line until both tools officially support newer compiler versions; do not override their supported peer ranges. The test compiler configuration explicitly includes Jest and Node types.
+- **Transitive dependencies:** Temporary `glob` and `minimatch` overrides select patched releases while upstream tooling updates its dependency ranges. Validate lint, test discovery, and coverage when updating these overrides, and remove them when upstream ranges include patched versions. Track the remaining low-severity `deepmerge` advisory (GHSA-gcqx-w48m-w2h4) in Jest's development-only dependency tree until an upstream fix exists; production dependencies must remain audit-clean.
+- **Azure management APIs:** Prefer current stable ARM API versions and monitor retirement announcements. Key Vault must use `2026-02-01` or later before February 27, 2027; this does not change secret data-plane API lifecycles. Preserve explicit RBAC, network, SKU, retention, replica, and certificate settings during API updates.
+  - Preserve the deployed consumption-only environment, public ingress boundary, existing peer-security settings, 300-second cooldown/30-second polling, latest-revision traffic, Cosmos automatic failover, indexing paths, and conflict resolution explicitly rather than relying on evolving API defaults.
+- **Update cadence:** Dependabot checks npm, Docker, and GitHub Actions monthly. Review the pinned Chart.js CDN version, Node version file, Bicep CLI, and ARM API versions during the same maintenance window.
 
 ## 7. Compliance
 

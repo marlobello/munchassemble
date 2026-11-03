@@ -36,15 +36,27 @@ param timezone string = 'America/Chicago'
 @description('Environment tag')
 param env string = 'prod'
 
-resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource containerAppsEnv 'Microsoft.App/managedEnvironments@2026-07-01' = {
   name: envName
   location: location
   properties: {
+    environmentMode: 'ConsumptionOnly'
+    publicNetworkAccess: 'Enabled'
+    peerAuthentication: {
+      mtls: {
+        enabled: false
+      }
+    }
+    peerTrafficConfiguration: {
+      encryption: {
+        enabled: false
+      }
+    }
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
-        customerId: reference(workspaceResourceId, '2023-09-01').customerId
-        sharedKey: listKeys(workspaceResourceId, '2023-09-01').primarySharedKey
+        customerId: reference(workspaceResourceId, '2026-03-01').customerId
+        sharedKey: listKeys(workspaceResourceId, '2026-03-01').primarySharedKey
       }
     }
   }
@@ -54,7 +66,7 @@ resource containerAppsEnv 'Microsoft.App/managedEnvironments@2024-03-01' = {
   }
 }
 
-resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
+resource containerApp 'Microsoft.App/containerApps@2026-07-01' = {
   name: appName
   location: location
   identity: {
@@ -99,6 +111,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
+        cooldownPeriod: 300
+        pollingInterval: 30
         minReplicas: 1 // NFR §3 — no cold starts; keep WebSocket alive
         // Singleton gateway bot: exactly ONE replica. A second instance would open a
         // duplicate Discord Gateway connection (double-handling every event) and would

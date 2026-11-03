@@ -11,6 +11,7 @@ on:
 concurrency:
   group: deploy-prod
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
@@ -29,25 +30,25 @@ jobs:
       image-tag: sha-${{ steps.sha.outputs.short }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: Set short SHA
         id: sha
         run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
-          node-version: lts/*
+          node-version-file: app/.node-version
           cache: npm
           cache-dependency-path: app/package-lock.json
 
       - name: Install, build & test
         working-directory: app
-        run: npm ci && npm run build && npm test
+        run: npm ci && npm run audit && npm run build && npm run typecheck && npm run lint && npm test
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -55,7 +56,7 @@ jobs:
 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -65,7 +66,7 @@ jobs:
             latest=false
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v7.4.0
         with:
           context: ./app
           push: true
@@ -80,7 +81,7 @@ jobs:
 
     steps:
       - name: Azure Login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3.1.0
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

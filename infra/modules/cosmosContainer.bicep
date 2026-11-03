@@ -26,10 +26,20 @@ var baseResource = {
   indexingPolicy: {
     indexingMode: 'consistent'
     automatic: true
+    includedPaths: [
+      { path: '/*' }
+    ]
+    excludedPaths: [
+      { path: '/"_etag"/?' }
+    ]
+  }
+  conflictResolutionPolicy: {
+    mode: 'LastWriterWins'
+    conflictResolutionPath: '/_ts'
   }
 }
 
-resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2026-03-15' = {
   name: '${accountName}/${databaseName}/${containerName}'
   properties: {
     // Use union() to add defaultTtl only when explicitly set (non-zero).
