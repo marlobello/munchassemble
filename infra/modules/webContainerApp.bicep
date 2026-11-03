@@ -119,7 +119,7 @@ resource webApp 'Microsoft.App/containerApps@2026-07-01' = {
             memory: '0.5Gi'
           }
           env: [
-            { name: 'NODE_ENV', value: env }
+            { name: 'NODE_ENV', value: 'production' }
             { name: 'KEY_VAULT_NAME', value: keyVaultName }
             { name: 'COSMOS_ENDPOINT', value: cosmosEndpoint }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }

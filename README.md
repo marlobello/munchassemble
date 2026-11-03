@@ -264,6 +264,8 @@ GitHub Actions workflows (requires Azure OIDC federated credentials):
 Production releases share a queued concurrency group so bot, web, and infrastructure
 updates cannot race. Infrastructure deployments preserve both running app images.
 All image releases enforce the app validation and no-high/critical audit gates.
+Azure runtimes explicitly use `NODE_ENV=production` so HTTPS authentication
+cookies keep their Secure attribute, independently of resource environment tags.
 
 ### Dependency maintenance
 

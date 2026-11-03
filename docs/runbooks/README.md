@@ -84,6 +84,17 @@ and private analytics); satisfies NFR sections 1, 2, and 6.
 
 No new GitHub secrets or environment variables are required for these upgrades.
 
+### Production cookie verification
+
+Both Bicep container declarations set `NODE_ENV=production`, not the resource
+label `prod`. The web server enables Secure cookies only for that exact runtime
+value. After an infrastructure release, request `/login` without following its
+redirect and verify the `ma_oauth_state` cookie has `Secure`, `HttpOnly`, and
+`SameSite=Lax`. Do not log its signed state value. An invalid `/auth/callback`
+state must return HTTP 400. These checks complement `/health` and the
+unauthenticated dashboard check; interactive guild-member login still requires
+an authorized Discord account.
+
 ---
 
 ## Rollback
